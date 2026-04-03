@@ -118,21 +118,10 @@ def normalize_chinese_role_terms(text: str) -> str:
     """Normalize user-facing Chinese role terms to a single preferred wording."""
     if not text:
         return ""
-
-    replacements = {
-        "熊派分析师": "空头分析师",
-        "熊派投资者": "空头投资者",
-        "熊观点": "空头观点",
-        "熊派": "空头",
-        "牛派分析师": "多头分析师",
-        "牛派投资者": "多头投资者",
-        "牛观点": "多头观点",
-        "牛派": "多头",
-    }
-    normalized = text
-    for src, dst in replacements.items():
-        normalized = normalized.replace(src, dst)
-    return normalized
+    return CHINESE_ROLE_TERM_PATTERN.sub(
+        lambda match: CHINESE_ROLE_TERM_REPLACEMENTS[match.group(0)],
+        text,
+    )
 
 
 def localize_rating_term(term: str) -> str:
@@ -194,6 +183,51 @@ def get_collaboration_stop_instruction() -> str:
 
 SNAPSHOT_MARKERS = ("FEEDBACK SNAPSHOT:", "反馈快照:")
 SNAPSHOT_TEMPLATE = get_snapshot_template()
+CHINESE_RATING_EXPLICIT_PATTERNS = [
+    ("买入", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**买入\**")),
+    ("增持", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**增持\**")),
+    ("持有", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**持有\**")),
+    ("减持", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**减持\**")),
+    ("卖出", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**卖出\**")),
+    ("买入", re.compile(r"(?:建议|维持|转为)\s*买入")),
+    ("增持", re.compile(r"(?:建议|维持|转为)\s*增持")),
+    ("持有", re.compile(r"(?:建议|维持|转为)\s*持有")),
+    ("减持", re.compile(r"(?:建议|维持|转为)\s*减持")),
+    ("卖出", re.compile(r"(?:建议|维持|转为)\s*卖出")),
+]
+CHINESE_RATING_NEGATION_PATTERN = re.compile(
+    r"(不建议|不宜|不是|并非|避免|不要|勿|难言|无法|不能|非|不|别)\s*$"
+)
+CHINESE_RATING_HEURISTIC_PATTERNS = [
+    ("卖出", re.compile(r"(清仓|退出(?:仓位|头寸)?|止损离场|果断卖出|卖出为主)")),
+    ("减持", re.compile(r"(降低仓位|分批止盈|降低敞口|部分卖出|先减仓|逢高减仓|止盈减仓)")),
+    ("增持", re.compile(r"(加仓|提高仓位|逢低布局|继续增持|扩大仓位)")),
+    ("买入", re.compile(r"(买入机会|积极布局|值得买入|坚定看多|继续买入)")),
+    ("持有", re.compile(r"(继续观察|暂不动作|维持仓位|等待确认|持仓观望)")),
+]
+ENGLISH_RATING_EXPLICIT_PATTERNS = [
+    ("SELL", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**sell\**", re.IGNORECASE)),
+    ("UNDERWEIGHT", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**underweight\**", re.IGNORECASE)),
+    ("HOLD", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**hold\**", re.IGNORECASE)),
+    ("OVERWEIGHT", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**overweight\**", re.IGNORECASE)),
+    ("BUY", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**buy\**", re.IGNORECASE)),
+    ("SELL", re.compile(r"(?:recommend|maintain|shift to|move to)\s+sell", re.IGNORECASE)),
+    ("UNDERWEIGHT", re.compile(r"(?:recommend|maintain|shift to|move to)\s+underweight", re.IGNORECASE)),
+    ("HOLD", re.compile(r"(?:recommend|maintain|shift to|move to)\s+hold", re.IGNORECASE)),
+    ("OVERWEIGHT", re.compile(r"(?:recommend|maintain|shift to|move to)\s+overweight", re.IGNORECASE)),
+    ("BUY", re.compile(r"(?:recommend|maintain|shift to|move to)\s+buy", re.IGNORECASE)),
+]
+ENGLISH_RATING_NEGATION_PATTERN = re.compile(
+    r"(do not|don't|not|avoid|never|no|cannot|can't)\s*$",
+    re.IGNORECASE,
+)
+ENGLISH_RATING_HEURISTIC_PATTERNS = [
+    ("SELL", re.compile(r"(exit position|sell the stock|close the position|fully exit)", re.IGNORECASE)),
+    ("UNDERWEIGHT", re.compile(r"(reduce exposure|trim the position|take partial profits)", re.IGNORECASE)),
+    ("OVERWEIGHT", re.compile(r"(add to position|increase exposure|build the position)", re.IGNORECASE)),
+    ("BUY", re.compile(r"(buy the stock|enter the position|strong upside)", re.IGNORECASE)),
+    ("HOLD", re.compile(r"(maintain the position|wait for confirmation|stay on hold)", re.IGNORECASE)),
+]
 
 
 def _condense_excerpt(text: str, limit: int = 120) -> str:
@@ -218,20 +252,20 @@ def _detect_chinese_rating(text: str) -> str:
     if not content.strip():
         return "持有"
 
-    for rating, patterns in _get_rating_patterns():
-        for pattern in patterns:
-            if pattern in content:
-                return rating
+    for rating, pattern in CHINESE_RATING_EXPLICIT_PATTERNS:
+        match = pattern.search(content)
+        if not match:
+            continue
+        prefix = content[max(0, match.start() - 8):match.start()]
+        if CHINESE_RATING_NEGATION_PATTERN.search(prefix):
+            continue
+        return rating
 
-    heuristic_patterns = [
-        ("卖出", ("清仓", "退出", "避免入场", "止损离场", "果断卖出")),
-        ("减持", ("降低仓位", "分批止盈", "降低敞口", "部分卖出", "先减仓")),
-        ("增持", ("加仓", "提高仓位", "逢低布局", "继续增持", "扩大仓位")),
-        ("买入", ("买入机会", "积极布局", "值得买入", "坚定看多", "继续买入")),
-        ("持有", ("继续观察", "暂不动作", "维持仓位", "等待确认", "持仓观望")),
-    ]
-    for rating, patterns in heuristic_patterns:
-        if any(pattern in content for pattern in patterns):
+    for rating, pattern in CHINESE_RATING_HEURISTIC_PATTERNS:
+        for match in pattern.finditer(content):
+            prefix = content[max(0, match.start() - 8):match.start()]
+            if CHINESE_RATING_NEGATION_PATTERN.search(prefix):
+                continue
             return rating
 
     return "持有"
@@ -242,26 +276,20 @@ def _detect_english_rating(text: str) -> str:
     if not content.strip():
         return "HOLD"
 
-    explicit_patterns = [
-        ("SELL", ("final transaction proposal: **sell**", "rating: sell", "recommend sell")),
-        ("UNDERWEIGHT", ("final transaction proposal: **underweight**", "rating: underweight", "recommend underweight")),
-        ("HOLD", ("final transaction proposal: **hold**", "rating: hold", "recommend hold")),
-        ("OVERWEIGHT", ("final transaction proposal: **overweight**", "rating: overweight", "recommend overweight")),
-        ("BUY", ("final transaction proposal: **buy**", "rating: buy", "recommend buy")),
-    ]
-    for rating, patterns in explicit_patterns:
-        if any(pattern in content for pattern in patterns):
-            return rating
+    for rating, pattern in ENGLISH_RATING_EXPLICIT_PATTERNS:
+        match = pattern.search(content)
+        if not match:
+            continue
+        prefix = content[max(0, match.start() - 12):match.start()]
+        if ENGLISH_RATING_NEGATION_PATTERN.search(prefix):
+            continue
+        return rating
 
-    heuristic_patterns = [
-        ("SELL", ("exit position", "avoid entry", "sell the stock", "close the position")),
-        ("UNDERWEIGHT", ("reduce exposure", "trim the position", "take partial profits")),
-        ("OVERWEIGHT", ("add to position", "increase exposure", "build the position")),
-        ("BUY", ("buy the stock", "enter the position", "strong upside")),
-        ("HOLD", ("maintain the position", "wait for confirmation", "stay on hold")),
-    ]
-    for rating, patterns in heuristic_patterns:
-        if any(pattern in content for pattern in patterns):
+    for rating, pattern in ENGLISH_RATING_HEURISTIC_PATTERNS:
+        for match in pattern.finditer(content):
+            prefix = content[max(0, match.start() - 12):match.start()]
+            if ENGLISH_RATING_NEGATION_PATTERN.search(prefix):
+                continue
             return rating
 
     return "HOLD"
@@ -504,3 +532,22 @@ def create_msg_delete():
 
 
         
+CHINESE_ROLE_TERM_REPLACEMENTS = {
+    "熊派分析师": "空头分析师",
+    "熊派投资者": "空头投资者",
+    "熊观点": "空头观点",
+    "熊派": "空头",
+    "牛派分析师": "多头分析师",
+    "牛派投资者": "多头投资者",
+    "牛观点": "多头观点",
+    "牛派": "多头",
+}
+CHINESE_ROLE_TERM_PATTERN = re.compile(
+    "|".join(
+        sorted(
+            (re.escape(term) for term in CHINESE_ROLE_TERM_REPLACEMENTS),
+            key=len,
+            reverse=True,
+        )
+    )
+)

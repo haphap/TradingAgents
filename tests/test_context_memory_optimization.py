@@ -188,6 +188,46 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         self.assertIn("- 当前观点: 减持", snapshot)
 
+    def test_feedback_snapshot_ignores_negated_buy_language(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "当前不建议买入，应该继续观察，等待更明确的基本面确认。\n\n"
+            "反馈快照:\n"
+            "- 当前观点:\n"
+            "- 发生了什么变化:\n"
+            "- 为什么变化:\n"
+            "- 关键反驳:\n"
+            "- 下一轮教训:"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertIn("- 当前观点: 持有", snapshot)
+        self.assertNotIn("- 当前观点: 买入", snapshot)
+
+    def test_feedback_snapshot_ignores_negated_english_buy_language(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "English"
+        set_config(cfg)
+
+        response = (
+            "We do not recommend buy here and prefer to wait for clearer confirmation.\n\n"
+            "FEEDBACK SNAPSHOT:\n"
+            "- Current thesis:\n"
+            "- What changed:\n"
+            "- Why it changed:\n"
+            "- Key rebuttal:\n"
+            "- Lesson for next round:"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertIn("- Current thesis: HOLD", snapshot)
+        self.assertNotIn("- Current thesis: BUY", snapshot)
+
 
 if __name__ == "__main__":
     unittest.main()
