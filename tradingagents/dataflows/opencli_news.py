@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import shutil
 import subprocess
@@ -12,10 +13,20 @@ def _parse_date(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
+@functools.lru_cache(maxsize=1)
+def _resolve_opencli_binary() -> str | None:
+    """Find the first available opencli binary: opencli-rs preferred, opencli as fallback."""
+    for name in ("opencli-rs", "opencli"):
+        binary = shutil.which(name)
+        if binary:
+            return binary
+    return None
+
+
 def _ensure_opencli() -> str:
-    binary = shutil.which("opencli-rs")
+    binary = _resolve_opencli_binary()
     if not binary:
-        raise DataVendorUnavailable("opencli-rs is not installed or not on PATH.")
+        raise DataVendorUnavailable("Neither opencli-rs nor opencli is installed or on PATH.")
     return binary
 
 
@@ -30,19 +41,19 @@ def _run_opencli(args: list[str]) -> list[dict]:
             timeout=60,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise DataVendorUnavailable(f"opencli-rs execution failed: {exc}") from exc
+        raise DataVendorUnavailable(f"opencli execution failed: {exc}") from exc
 
     if result.returncode != 0:
         stderr = (result.stderr or result.stdout or "").strip()
-        raise DataVendorUnavailable(f"opencli-rs command failed: {stderr}")
+        raise DataVendorUnavailable(f"opencli command failed: {stderr}")
 
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise DataVendorUnavailable("opencli-rs returned non-JSON output.") from exc
+        raise DataVendorUnavailable("opencli returned non-JSON output.") from exc
 
     if not isinstance(payload, list):
-        raise DataVendorUnavailable("opencli-rs returned an unexpected payload format.")
+        raise DataVendorUnavailable("opencli returned an unexpected payload format.")
 
     return payload
 
