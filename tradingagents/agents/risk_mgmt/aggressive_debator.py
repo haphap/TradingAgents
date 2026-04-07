@@ -22,6 +22,8 @@ def create_aggressive_debator(llm):
     def aggressive_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         aggressive_history = risk_debate_state.get("aggressive_history", "")
+        conservative_history = risk_debate_state.get("conservative_history", "")
+        neutral_history = risk_debate_state.get("neutral_history", "")
         round_index = risk_debate_state.get("count", 0)
         current_conservative_response = risk_debate_state.get("current_conservative_response", "")
         current_neutral_response = risk_debate_state.get("current_neutral_response", "")
@@ -51,6 +53,9 @@ Rolling risk debate brief: {debate_brief}
 Your latest feedback snapshot: {aggressive_snapshot}
 Latest conservative feedback snapshot: {conservative_snapshot}
 Latest neutral feedback snapshot: {neutral_snapshot}
+Your complete debate history: {aggressive_history}
+Conservative's complete debate history: {conservative_history}
+Neutral's complete debate history: {neutral_history}
 Last conservative argument body: {current_conservative_response}
 Last neutral argument body: {current_neutral_response}
 If there are no responses from the other viewpoints yet, present your own argument based on the available data.

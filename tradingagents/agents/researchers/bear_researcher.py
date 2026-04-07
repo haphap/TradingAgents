@@ -23,6 +23,7 @@ def create_bear_researcher(llm, memory):
     def bear_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         bear_history = investment_debate_state.get("bear_history", "")
+        bull_history = investment_debate_state.get("bull_history", "")
         round_index = investment_debate_state.get("count", 0)
         current_response = investment_debate_state.get("current_bull_response", "")
         bull_snapshot = investment_debate_state.get("bull_snapshot", "")
@@ -59,6 +60,8 @@ Company fundamentals report: {fundamentals_report}
 Rolling debate brief: {debate_brief}
 Your latest feedback snapshot: {bear_snapshot}
 Latest bull feedback snapshot: {bull_snapshot}
+Your complete debate history: {bear_history}
+Bull's complete debate history: {bull_history}
 Last bull argument body: {current_response}
 Reflections from similar situations and lessons learned: {past_memory_str}
 Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
