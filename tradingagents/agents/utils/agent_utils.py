@@ -96,20 +96,21 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         return ""
     if _is_chinese_output():
         return (
-            "反馈快照每项必须填写一句具体内容，且四项内容不得重复：\n"
-            "「立场」写明当前评级或核心判断（如：维持卖出，目标价XX元）；\n"
-            "「本轮新增」写本轮我方新补充的关键证据或论点（聚焦我方视角，不提对手）；\n"
-            "「关键反驳」写针对对手本轮论点的具体反驳（必须明确指出对手观点并反驳，与「本轮新增」内容不同）；\n"
-            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语，禁止四项内容相同或相似。\n"
-            "禁止在任何字段中写开场白（如「各位好」「我是XX分析师」）或重复角色名。"
+            "反馈快照是对本轮核心内容的极简提炼，每项严格限制在15字以内，必须用自己的语言重新概括，禁止从正文中直接复制句子：\n"
+            "「立场」：一句话评级，如「维持减持，估值偏高」；\n"
+            "「本轮新增」：我方本轮最关键的新论点，如「铜价下行压力超预期」；\n"
+            "「关键反驳」：针对对手核心观点的一句反驳，如「多头忽视债务扩张风险」；\n"
+            "「待验证」：下轮需跟踪的一个具体指标或事件，如「Q2铜价走势」。\n"
+            "严禁复制正文原句，严禁开场白，严禁重复角色名，四项内容各不相同。"
         )
     return (
-        "Each snapshot field must contain one concrete sentence, and all four must be distinct: "
-        "'Stance' states the current rating or core judgment; "
-        "'New this round' gives NEW evidence or argument from MY side this round (no mention of opponent); "
-        "'Key rebuttal' explicitly names the opponent's claim and rebuts it (must differ from 'New this round'); "
-        "'To verify' names the key question or data to track next round. "
-        "No placeholders. No two fields may say the same thing."
+        "The feedback snapshot is an ultra-concise digest — each field must be AT MOST 15 words, "
+        "written in your own words (no copy-paste from the argument body), and all four must be distinct:\n"
+        "'Stance': one-line rating, e.g. 'Maintain sell — valuation stretched';\n"
+        "'New this round': the single most important NEW point I added, e.g. 'Copper demand outlook worsening';\n"
+        "'Key rebuttal': one-sentence counter to the opponent's main claim, e.g. 'Bull ignores debt expansion risk';\n"
+        "'To verify': one specific metric or event to watch next round, e.g. 'Q2 copper price trend'.\n"
+        "No copy-pasting. No greetings. No role names. No two fields alike."
     )
 
 
