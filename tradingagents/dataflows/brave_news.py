@@ -87,15 +87,30 @@ def _format_news_block(title: str, start_date: str, end_date: str, results: list
     return f"## {title}, from {start_date} to {end_date}:\n\n" + "\n\n".join(blocks)
 
 
+def _days_since(dt: datetime) -> int:
+    """Return how many days have passed from dt to today (UTC)."""
+    return max(0, (datetime.utcnow() - dt).days)
+
+
+def _date_cutoff_warning(end_date: str) -> str:
+    return (
+        f"⚠️ 数据说明：以下新闻数据从实时搜索引擎获取，结果可能包含 {end_date} 之后发布的内容。"
+        f"分析时请严格仅参考 {end_date} 及之前发生的事件，忽略任何在此日期之后的信息。\n\n"
+    )
+
+
 def get_news(ticker: str, start_date: str, end_date: str) -> str:
     start_dt = _parse_date(start_date)
     end_dt = _parse_date(end_date)
-    day_window = max(1, (end_dt - start_dt).days)
-    freshness = _freshness_from_days(day_window)
+    # freshness must cover from start_date back to today; use days since start_date
+    # so Brave returns results that could include the requested window
+    days_since_start = _days_since(start_dt)
+    freshness = _freshness_from_days(max(1, days_since_start))
 
     query = f"{ticker} stock news earnings guidance sentiment"
     results = _search_brave(query=query, count=20, freshness=freshness)
-    return _format_news_block(f"{ticker} News", start_date, end_date, results)
+    block = _format_news_block(f"{ticker} News", start_date, end_date, results)
+    return _date_cutoff_warning(end_date) + block
 
 
 def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) -> str:
@@ -103,7 +118,8 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) ->
     start_dt = end_dt - timedelta(days=look_back_days)
     start_date = start_dt.strftime("%Y-%m-%d")
 
-    freshness = _freshness_from_days(max(1, look_back_days))
+    days_since_start = _days_since(start_dt)
+    freshness = _freshness_from_days(max(1, days_since_start))
     queries = [
         "US stock market macro news",
         "Federal Reserve rates inflation outlook",
@@ -127,4 +143,4 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) ->
         if len(merged) >= limit:
             break
 
-    return _format_news_block("Global Market News", start_date, curr_date, merged)
+    return _date_cutoff_warning(curr_date) + _format_news_block("Global Market News", start_date, curr_date, merged)

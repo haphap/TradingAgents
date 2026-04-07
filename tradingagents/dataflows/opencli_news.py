@@ -263,6 +263,40 @@ def _collect_sinafinance_results(ticker: str, limit: int = 8) -> tuple[list[dict
     return _dedupe_records(filtered, ("time", "content", "title"))[:limit], []
 
 
+def _date_cutoff_warning(end_date: str) -> str:
+    return (
+        f"⚠️ 数据说明：以下新闻数据从实时数据源获取，结果可能包含 {end_date} 之后发布的内容。"
+        f"分析时请严格仅参考 {end_date} 及之前发生的事件，忽略任何在此日期之后的信息。\n\n"
+    )
+
+
+def _filter_by_date(items: list[dict], end_date: str) -> list[dict]:
+    """过滤掉发布日期晚于 end_date 的条目（仅适用于有 date 字段的来源）。"""
+    end_dt = _parse_date(end_date)
+    filtered = []
+    for item in items:
+        raw = item.get("date", "")
+        if not raw:
+            filtered.append(item)
+            continue
+        try:
+            # Google News 常见格式: "2026-03-12" 或 "Mar 12, 2026"
+            for fmt in ("%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"):
+                try:
+                    item_dt = datetime.strptime(raw[:len(fmt) + 2].strip(), fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                filtered.append(item)
+                continue
+            if item_dt <= end_dt:
+                filtered.append(item)
+        except Exception:
+            filtered.append(item)
+    return filtered
+
+
 def get_news(ticker: str, start_date: str, end_date: str) -> str:
     _parse_date(start_date)
     _parse_date(end_date)
@@ -334,8 +368,9 @@ def get_news(ticker: str, start_date: str, end_date: str) -> str:
             )
         )
 
-    google_news_items, google_news_errors = _collect_google_news(ticker, limit=6)
+    google_news_items, google_news_errors = _collect_google_news(ticker, limit=10)
     errors.extend(google_news_errors)
+    google_news_items = _filter_by_date(google_news_items, end_date)
     if google_news_items:
         sections.append(
             _format_block(
@@ -378,7 +413,8 @@ def get_news(ticker: str, start_date: str, end_date: str) -> str:
             detail += f" Source errors: {'; '.join(errors[:3])}."
         return detail
 
-    return f"## {ticker} News and Social Signals, from {start_date} to {end_date}:\n\n" + "\n\n".join(sections)
+    header = f"## {ticker} News and Social Signals, from {start_date} to {end_date}:\n\n"
+    return _date_cutoff_warning(end_date) + header + "\n\n".join(sections)
 
 
 def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) -> str:
@@ -387,7 +423,10 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) ->
 
     sections = []
 
-    google_items = _run_opencli(["google", "news", "--limit", str(limit), "--format", "json"])
+    google_items = _filter_by_date(
+        _run_opencli(["google", "news", "--limit", str(limit * 2), "--format", "json"]),
+        curr_date,
+    )
     sections.append(
         _format_block(
             "Google News Top Stories",
@@ -446,4 +485,5 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) ->
         )
     )
 
-    return f"## Global Market News and Social Signals, from {start_date} to {curr_date}:\n\n" + "\n\n".join(sections)
+    header = f"## Global Market News and Social Signals, from {start_date} to {curr_date}:\n\n"
+    return _date_cutoff_warning(curr_date) + header + "\n\n".join(sections)
