@@ -135,6 +135,15 @@ def get_vendor(category: str, method: str = None) -> str:
     # Fall back to category-level configuration
     return config.get("data_vendors", {}).get(category, "default")
 
+_CHINESE_SUFFIXES = {"SH", "SZ", "BJ", "HK"}
+
+def _is_chinese_ticker(ticker: str) -> bool:
+    """Return True for Chinese/HK exchange-qualified tickers (e.g. 601899.SH)."""
+    if isinstance(ticker, str) and "." in ticker:
+        return ticker.rsplit(".", 1)[-1].upper() in _CHINESE_SUFFIXES
+    return False
+
+
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""
     category = get_category_for_method(method)
@@ -144,6 +153,15 @@ def route_to_vendor(method: str, *args, **kwargs):
 
     if method not in VENDOR_METHODS:
         raise ValueError(f"Method '{method}' not supported")
+
+    # For Chinese market tickers always try tushare first.
+    ticker = args[0] if args else kwargs.get("ticker") or kwargs.get("symbol") or ""
+    if _is_chinese_ticker(ticker) and "tushare" in VENDOR_METHODS[method]:
+        if "tushare" not in primary_vendors:
+            primary_vendors.insert(0, "tushare")
+        elif primary_vendors[0] != "tushare":
+            primary_vendors.remove("tushare")
+            primary_vendors.insert(0, "tushare")
 
     # Build fallback chain: primary vendors first, then remaining available vendors
     all_available_vendors = list(VENDOR_METHODS[method].keys())
