@@ -692,10 +692,55 @@ def build_debate_brief(snapshots: dict[str, str], latest_speaker: str = "") -> s
     return "\n\n".join(sections).strip()
 
 
+def _resolve_company_name(ticker: str) -> str:
+    """Best-effort lookup of the company name for a ticker.
+
+    Tries Tushare first (accurate for Chinese A-shares / HK stocks), then
+    falls back to yfinance.  Returns an empty string when both fail so the
+    caller can decide whether to include the name.
+    """
+    # --- Tushare (A-share / HK) ---
+    suffix = ticker.rsplit(".", 1)[-1].upper() if "." in ticker else ""
+    if suffix in ("SH", "SZ", "BJ", "HK"):
+        try:
+            import tushare as ts
+            import os
+            token = os.getenv("TUSHARE_TOKEN", "")
+            if token:
+                ts.set_token(token)
+                pro = ts.pro_api()
+                # Normalize to tushare canonical format (601899.SH / 600000.SH)
+                ts_code = ticker.upper()
+                df = pro.stock_basic(ts_code=ts_code, fields="ts_code,name")
+                if not df.empty:
+                    return df["name"].iloc[0]
+        except Exception:
+            pass
+
+    # --- yfinance fallback ---
+    try:
+        import yfinance as yf
+        _YF_MAP = {"SH": "SS", "SSE": "SS"}
+        if "." in ticker:
+            code, sfx = ticker.rsplit(".", 1)
+            yf_sym = f"{code}.{_YF_MAP.get(sfx.upper(), sfx)}".upper()
+        else:
+            yf_sym = ticker.upper()
+        info = yf.Ticker(yf_sym).info
+        name = info.get("longName") or info.get("shortName") or ""
+        return name
+    except Exception:
+        pass
+
+    return ""
+
+
 def build_instrument_context(ticker: str) -> str:
     """Describe the exact instrument so agents preserve exchange-qualified tickers."""
+    name = _resolve_company_name(ticker)
+    name_clause = f" ({name})" if name else ""
     return (
-        f"The instrument to analyze is `{ticker}`. "
+        f"The instrument to analyze is `{ticker}`{name_clause}. "
         "Use this exact ticker in every tool call, report, and recommendation, "
         "preserving any exchange suffix (e.g. `.TO`, `.L`, `.HK`, `.T`)."
     )
