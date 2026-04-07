@@ -21,6 +21,7 @@ def create_aggressive_debator(llm):
     def aggressive_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         aggressive_history = risk_debate_state.get("aggressive_history", "")
+        round_index = risk_debate_state.get("count", 0)
         current_conservative_response = truncate_response_for_prompt(
             risk_debate_state.get("current_conservative_response", "")
         )
@@ -60,8 +61,8 @@ If there are no responses from the other viewpoints yet, present your own argume
 Engage actively by addressing any specific concerns raised, refuting the weaknesses in their logic, and asserting the benefits of risk-taking to outpace market norms. Maintain a focus on debating and persuading, not just presenting data. Challenge each counterpoint to underscore why a high-risk approach is optimal. Output conversationally as if you are speaking without any special formatting.
 {get_aggressive_risk_instruction()}
 After your normal argument, append an exact block using this template:
-{get_snapshot_template()}
-{get_snapshot_writing_instruction()}{get_language_instruction()}"""
+{get_snapshot_template(round_index)}
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}"""
 
         try:
             response = llm.invoke(prompt)

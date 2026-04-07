@@ -74,7 +74,9 @@ def truncate_response_for_prompt(text: str) -> str:
     return truncate_for_prompt(text, limit_key="response_context_char_limit", default_limit=3000)
 
 
-def get_snapshot_template() -> str:
+def get_snapshot_template(round_index: int = 1) -> str:
+    if round_index == 0:
+        return ""
     if _is_chinese_output():
         return """反馈快照:
 - 立场:
@@ -89,7 +91,9 @@ def get_snapshot_template() -> str:
 - To verify:"""
 
 
-def get_snapshot_writing_instruction() -> str:
+def get_snapshot_writing_instruction(round_index: int = 1) -> str:
+    if round_index == 0:
+        return ""
     if _is_chinese_output():
         return (
             "反馈快照每项必须填写一句具体内容，且四项内容不得重复：\n"

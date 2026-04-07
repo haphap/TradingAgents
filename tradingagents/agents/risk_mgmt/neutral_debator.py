@@ -21,6 +21,7 @@ def create_neutral_debator(llm):
     def neutral_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         neutral_history = risk_debate_state.get("neutral_history", "")
+        round_index = risk_debate_state.get("count", 0)
         current_aggressive_response = truncate_response_for_prompt(
             risk_debate_state.get("current_aggressive_response", "")
         )
@@ -60,8 +61,8 @@ If there are no responses from the other viewpoints yet, present your own argume
 Engage actively by analyzing both sides critically, addressing weaknesses in the aggressive and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility. Focus on debating rather than simply presenting data, aiming to show that a balanced view can lead to the most reliable outcomes. Output conversationally as if you are speaking without any special formatting.
 {get_neutral_risk_instruction()}
 After your normal argument, append an exact block using this template:
-{get_snapshot_template()}
-{get_snapshot_writing_instruction()}{get_language_instruction()}"""
+{get_snapshot_template(round_index)}
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}"""
 
         try:
             response = llm.invoke(prompt)

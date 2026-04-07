@@ -22,6 +22,7 @@ def create_conservative_debator(llm):
     def conservative_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         conservative_history = risk_debate_state.get("conservative_history", "")
+        round_index = risk_debate_state.get("count", 0)
         current_aggressive_response = truncate_response_for_prompt(
             risk_debate_state.get("current_aggressive_response", "")
         )
@@ -61,8 +62,8 @@ If there are no responses from the other viewpoints yet, present your own argume
 Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.
 {get_conservative_risk_instruction()}
 After your normal argument, append an exact block using this template:
-{get_snapshot_template()}
-{get_snapshot_writing_instruction()}{get_language_instruction()}"""
+{get_snapshot_template(round_index)}
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}"""
 
         try:
             response = llm.invoke(prompt)

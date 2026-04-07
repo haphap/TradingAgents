@@ -22,6 +22,7 @@ def create_bear_researcher(llm, memory):
     def bear_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         bear_history = investment_debate_state.get("bear_history", "")
+        round_index = investment_debate_state.get("count", 0)
         current_response = truncate_response_for_prompt(
             investment_debate_state.get("current_response", "")
         )
@@ -66,8 +67,8 @@ Use this information to deliver a compelling bear argument, refute the bull's cl
 When writing in Chinese, use the exact role names "{localize_role_name('Bear Analyst')}" and "{localize_role_name('Bull Analyst')}". Do not use variants like "熊派分析师" or "牛派分析师".
 Your main argument body must be written entirely in Chinese. {get_bear_proposal_instruction()}
 After your normal argument, append an exact block using this template:
-{get_snapshot_template()}
-{get_snapshot_writing_instruction()}{get_language_instruction()}
+{get_snapshot_template(round_index)}
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}
 """
 
         try:
