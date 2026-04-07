@@ -524,6 +524,7 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
     if not snapshot:
         return fields
 
+    current_key = None
     for line in snapshot.splitlines():
         stripped = line.strip()
         matched = False
@@ -531,12 +532,19 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
             for label in aliases:
                 prefix = f"- {label}:"
                 if stripped.startswith(prefix):
-                    raw_value = stripped[len(prefix):].strip()
-                    fields[field_key] = _strip_any_role_prefix_from_value(raw_value)
+                    fields[field_key] = stripped[len(prefix):].strip()
+                    current_key = field_key
                     matched = True
                     break
             if matched:
                 break
+        if not matched and current_key and stripped and not stripped.startswith("-"):
+            # Continuation line for the current field — join with a space
+            fields[current_key] = (fields[current_key] + " " + stripped).strip()
+
+    # Strip role prefixes after full value is assembled
+    for key in fields:
+        fields[key] = _strip_any_role_prefix_from_value(fields[key])
     return fields
 
 
@@ -586,17 +594,9 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
 
     if _is_chinese_output():
         rating = _detect_chinese_rating(text)
-        new_this_round = (
-            second if len(sentences) > 1 else f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
-        )
-        rebuttal_source = next(
-            (s for s in sentences if any(word in s for word in ("但", "然而", "不过", "反驳", "忽略", "高估"))),
-            f"对手忽略了影响“{rating}”判断的关键数据或风险约束。",
-        )
-        to_verify = next(
-            (s for s in sentences if any(word in s for word in ("需要", "继续", "监控", "跟踪", "等待", "验证", "警惕"))),
-            f"下一轮验证支持“{rating}”的关键数据和风险触发条件。",
-        )
+        new_this_round = f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
+        rebuttal_source = f"对手忽略了影响“{rating}”判断的关键数据或风险约束。"
+        to_verify = f"下一轮验证支持“{rating}”的关键数据和风险触发条件。"
         return (
             "反馈快照:\n"
             f"- 立场: {rating}\n"
@@ -606,18 +606,9 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
         )
 
     rating = _detect_english_rating(text)
-    new_this_round = (
-        second if len(sentences) > 1
-        else f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
-    )
-    rebuttal_source = next(
-        (s for s in sentences if any(word in s.lower() for word in ("but", "however", "rebut", "weakness", "risk", "miss"))),
-        f"The opposing case missed the main evidence or risk controls behind the {rating} stance.",
-    )
-    to_verify = next(
-        (s for s in sentences if any(word in s.lower() for word in ("monitor", "watch", "verify", "track", "wait", "risk"))),
-        f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance.",
-    )
+    new_this_round = f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
+    rebuttal_source = f"The opposing case missed the main evidence or risk controls behind the {rating} stance."
+    to_verify = f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance."
     return (
         "FEEDBACK SNAPSHOT:\n"
         f"- Stance: {rating}\n"
