@@ -96,7 +96,8 @@ def get_snapshot_writing_instruction() -> str:
             "「立场」写明当前评级或核心判断（如：维持卖出，目标价XX元）；\n"
             "「本轮新增」写本轮我方新补充的关键证据或论点（聚焦我方视角，不提对手）；\n"
             "「关键反驳」写针对对手本轮论点的具体反驳（必须明确指出对手观点并反驳，与「本轮新增」内容不同）；\n"
-            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语，禁止四项内容相同或相似。"
+            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语，禁止四项内容相同或相似。\n"
+            "禁止在任何字段中写开场白（如「各位好」「我是XX分析师」）或重复角色名。"
         )
     return (
         "Each snapshot field must contain one concrete sentence, and all four must be distinct: "
@@ -457,6 +458,32 @@ def _snapshot_field_aliases() -> dict[str, tuple[str, ...]]:
     }
 
 
+_ALL_ROLE_NAMES: tuple[str, ...] = (
+    "多头分析师", "空头分析师", "激进分析师", "保守分析师", "中性分析师", "投资组合经理",
+    "Bull Analyst", "Bear Analyst", "Aggressive Analyst", "Conservative Analyst",
+    "Neutral Analyst", "Portfolio Manager",
+)
+
+
+def _strip_any_role_prefix_from_value(value: str) -> str:
+    """Strip a leading role self-label and greeting from a snapshot field value.
+
+    e.g. '保守分析师: 各位分析师好，我是保守风险分析师。针对...' → '针对...'
+    """
+    import re
+    pattern = "|".join(re.escape(n) for n in _ALL_ROLE_NAMES)
+    # Strip "rolename：/: " at the very start
+    value = re.sub(r"^(?:" + pattern + r")[：:]\s*", "", value)
+    # Strip common self-introduction sentences at the start:
+    # e.g. "各位分析师好，我是保守风险分析师。" / "大家好，我是激进分析师。"
+    value = re.sub(
+        r"^(?:各位\S{0,6}好[，,。！!]?\s*)?(?:我是|作为)\S{2,12}(?:分析师|经理)[，,。！!。]\s*",
+        "",
+        value,
+    )
+    return value.strip()
+
+
 def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
     fields = {key: "" for key in _snapshot_field_aliases()}
     if not snapshot:
@@ -469,7 +496,8 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
             for label in aliases:
                 prefix = f"- {label}:"
                 if stripped.startswith(prefix):
-                    fields[field_key] = stripped[len(prefix):].strip()
+                    raw_value = stripped[len(prefix):].strip()
+                    fields[field_key] = _strip_any_role_prefix_from_value(raw_value)
                     matched = True
                     break
             if matched:
