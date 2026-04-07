@@ -591,7 +591,7 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
         )
         rebuttal_source = next(
             (s for s in sentences if any(word in s for word in ("但", "然而", "不过", "反驳", "忽略", "高估"))),
-            second or f"对手忽略了影响“{rating}”判断的关键数据或风险约束。",
+            f"对手忽略了影响“{rating}”判断的关键数据或风险约束。",
         )
         to_verify = next(
             (s for s in sentences if any(word in s for word in ("需要", "继续", "监控", "跟踪", "等待", "验证", "警惕"))),
@@ -612,7 +612,7 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
     )
     rebuttal_source = next(
         (s for s in sentences if any(word in s.lower() for word in ("but", "however", "rebut", "weakness", "risk", "miss"))),
-        second or f"The opposing case missed the main evidence or risk controls behind the {rating} stance.",
+        f"The opposing case missed the main evidence or risk controls behind the {rating} stance.",
     )
     to_verify = next(
         (s for s in sentences if any(word in s.lower() for word in ("monitor", "watch", "verify", "track", "wait", "risk"))),
