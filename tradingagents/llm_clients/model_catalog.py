@@ -71,16 +71,20 @@ MODEL_OPTIONS: ProviderModeOptions = {
     },
     "ollama": {
         "quick": [
+            ("Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M"),
+            ("Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M"),
             ("Qwen3.5-27B (llama.cpp local)", "Qwen3.5-27B"),
-            ("Qwen3.5-35B-3A (llama.cpp local)", "Qwen3.5-35B-3A"),
             ("Qwen3.5-35B-A3B (llama.cpp local)", "Qwen3.5-35B-A3B"),
+            ("samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M (llama.cpp local)", "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M"),
             ("Qwen3.5-122B (llama.cpp local)", "Qwen3.5-122B"),
         ],
         "deep": [
             ("Qwen3.5-122B (llama.cpp local)", "Qwen3.5-122B"),
+            ("Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M"),
+            ("samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M (llama.cpp local)", "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M"),
             ("Qwen3.5-35B-A3B (llama.cpp local)", "Qwen3.5-35B-A3B"),
-            ("Qwen3.5-35B-3A (llama.cpp local)", "Qwen3.5-35B-3A"),
             ("Qwen3.5-27B (llama.cpp local)", "Qwen3.5-27B"),
+            ("Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M"),
         ],
     },
 }

@@ -184,6 +184,11 @@ def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
         return [(m["id"], m["id"]) for m in models]
     except Exception as e:
         console.print(f"\n[yellow]Could not fetch Ollama models from {base_url}: {e}[/yellow]")
+        # Fall back to static catalog
+        static = get_model_options("ollama", "deep")
+        if static:
+            console.print("[yellow]Using static model list as fallback.[/yellow]")
+            return static
         return []
 
 
