@@ -10,6 +10,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_label,
     localize_rating_term,
     localize_role_name,
+    normalize_chinese_role_terms,
     truncate_for_prompt,
 )
 
@@ -77,7 +78,8 @@ Append a feedback block in this exact format:
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""
 
         response = llm.invoke(prompt)
-        judge_snapshot = extract_feedback_snapshot(response.content)
+        normalized_content = normalize_chinese_role_terms(response.content)
+        judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {
                 "Aggressive Analyst": aggressive_snapshot,
@@ -89,7 +91,7 @@ Append a feedback block in this exact format:
         )
 
         new_risk_debate_state = {
-            "judge_decision": response.content,
+            "judge_decision": normalized_content,
             "history": risk_debate_state["history"],
             "aggressive_history": risk_debate_state["aggressive_history"],
             "conservative_history": risk_debate_state["conservative_history"],
@@ -107,7 +109,7 @@ Append a feedback block in this exact format:
 
         return {
             "risk_debate_state": new_risk_debate_state,
-            "final_trade_decision": response.content,
+            "final_trade_decision": normalized_content,
         }
 
     return portfolio_manager_node

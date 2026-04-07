@@ -7,6 +7,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_snapshot_template,
     get_snapshot_writing_instruction,
     localize_role_name,
+    normalize_chinese_role_terms,
     strip_feedback_snapshot,
     truncate_for_prompt,
 )
@@ -54,7 +55,7 @@ After your normal argument, append an exact block using this template:
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""
 
         response = llm.invoke(prompt)
-        raw_content = response.content
+        raw_content = normalize_chinese_role_terms(response.content)
         argument_body = strip_feedback_snapshot(raw_content)
         argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
         new_neutral_snapshot = extract_feedback_snapshot(raw_content)

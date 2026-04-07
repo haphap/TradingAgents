@@ -11,6 +11,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_label,
     localize_rating_term,
     localize_role_name,
+    normalize_chinese_role_terms,
     truncate_for_prompt,
 )
 
@@ -65,7 +66,8 @@ Here is the latest debate context:
 {bear_snapshot}{get_language_instruction()}
 """
         response = llm.invoke(prompt)
-        judge_snapshot = extract_feedback_snapshot(response.content)
+        normalized_content = normalize_chinese_role_terms(response.content)
+        judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {
                 "Bull Analyst": bull_snapshot,
@@ -76,11 +78,11 @@ Here is the latest debate context:
         )
 
         new_investment_debate_state = {
-            "judge_decision": response.content,
+            "judge_decision": normalized_content,
             "history": investment_debate_state.get("history", ""),
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": response.content,
+            "current_response": normalized_content,
             "bull_snapshot": bull_snapshot,
             "bear_snapshot": bear_snapshot,
             "debate_brief": updated_brief,
@@ -90,7 +92,7 @@ Here is the latest debate context:
 
         return {
             "investment_debate_state": new_investment_debate_state,
-            "investment_plan": response.content,
+            "investment_plan": normalized_content,
         }
 
     return research_manager_node
