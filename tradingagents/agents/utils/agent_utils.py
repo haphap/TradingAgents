@@ -96,15 +96,15 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         return ""
     if _is_chinese_output():
         return (
-            "反馈快照是对本轮核心内容的极简提炼，每项严格限制在15字以内，必须用自己的语言重新概括，禁止从正文中直接复制句子：\n"
+            "反馈快照是对本轮核心内容的极简提炼，每项严格限制在30字以内，必须用自己的语言重新概括，禁止从正文中直接复制句子：\n"
             "「立场」：一句话评级，如「维持减持，估值偏高」；\n"
-            "「本轮新增」：我方本轮最关键的新论点，如「铜价下行压力超预期」；\n"
-            "「关键反驳」：针对对手核心观点的一句反驳，如「多头忽视债务扩张风险」；\n"
-            "「待验证」：下轮需跟踪的一个具体指标或事件，如「Q2铜价走势」。\n"
+            "「本轮新增」：我方本轮最关键的新论点，如「铜价下行压力超预期，需求端拐点未至」；\n"
+            "「关键反驳」：针对对手核心观点的一句反驳，如「多头过度依赖政策利好，忽视债务扩张风险」；\n"
+            "「待验证」：下轮需跟踪的一个具体指标或事件，如「Q2铜价走势及美联储利率决议」。\n"
             "严禁复制正文原句，严禁开场白，严禁重复角色名，四项内容各不相同。"
         )
     return (
-        "The feedback snapshot is an ultra-concise digest — each field must be AT MOST 15 words, "
+        "The feedback snapshot is an ultra-concise digest — each field must be AT MOST 30 words, "
         "written in your own words (no copy-paste from the argument body), and all four must be distinct:\n"
         "'Stance': one-line rating, e.g. 'Maintain sell — valuation stretched';\n"
         "'New this round': the single most important NEW point I added, e.g. 'Copper demand outlook worsening';\n"
