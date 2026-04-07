@@ -214,60 +214,78 @@ def get_bull_proposal_instruction() -> str:
 def get_aggressive_risk_instruction() -> str:
     """Consistency instruction for the Aggressive Risk Analyst.
     The stance must align with the high-reward arguments made.
+    The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否与你所强调的高回报机会一致？"
             "如果论点支持激进入场，立场就应反映这一判断，不允许论点看多、立场却极度保守的矛盾情形。"
-            "最后一行必须输出：'最终交易建议: **买入**'或'最终交易建议: **增持**'"
-            "（仅在风险证据确实充分时可用'最终交易建议: **持有**'）。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
+            "并可加修饰词体现节奏与幅度，例如：\n"
+            "激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 持仓不动（仅在风险明确时使用）。\n"
+            "示例：风险建议: **激进加仓**  或  风险建议: **分批建仓，目标满仓**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "align with the high-reward case you've argued? If your argument supports aggressive entry, your snapshot "
-        "stance should reflect that. "
-        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**' "
-        "(use 'FINAL TRANSACTION PROPOSAL: **HOLD**' only if risk evidence clearly warrants caution)."
+        "align with the high-reward case you've argued? "
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
+        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
+        "Options: Aggressively Accumulate / Decisively Buy / Build Position in Batches / "
+        "Go All-In / Hold Firm (only if risk evidence clearly warrants). "
+        "Example: RISK RECOMMENDATION: **Aggressively Accumulate**  or  "
+        "RISK RECOMMENDATION: **Build Position in Batches, Target Full Position**"
     )
 
 
 def get_conservative_risk_instruction() -> str:
     """Consistency instruction for the Conservative Risk Analyst.
     The stance must align with the risk-protection arguments made.
+    The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否与你所强调的风险和资产保护一致？"
             "如果论点强调下行风险，立场就应反映这一判断，不允许论点满是风险警告、立场却比激进分析师还乐观的矛盾情形。"
-            "最后一行必须输出：'最终交易建议: **持有**'或'最终交易建议: **减持**'"
-            "（仅在风险极端严峻时可用'最终交易建议: **卖出**'）。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
+            "并可加修饰词体现节奏与幅度，例如：\n"
+            "立即止损 / 坚决减仓 / 逐步减仓 / 分批卖出 / 谨慎持有（仅在风险可控时使用）。\n"
+            "示例：风险建议: **逐步减仓，控制回撤**  或  风险建议: **立即止损，清空仓位**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "align with the risk-protection case you've argued? If your argument emphasizes downside risks, your "
-        "snapshot stance should reflect caution — do not signal a more bullish stance than the Aggressive Analyst. "
-        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **HOLD**' or 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' "
-        "(use 'FINAL TRANSACTION PROPOSAL: **SELL**' only when risks are extreme)."
+        "align with the risk-protection case you've argued? "
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
+        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
+        "Options: Immediate Stop-Loss / Decisively Reduce / Gradually Reduce / "
+        "Sell in Batches / Hold with Caution (only if risks are manageable). "
+        "Example: RISK RECOMMENDATION: **Gradually Reduce, Limit Drawdown**  or  "
+        "RISK RECOMMENDATION: **Immediate Stop-Loss, Exit Position**"
     )
 
 
 def get_neutral_risk_instruction() -> str:
     """Consistency instruction for the Neutral Risk Analyst.
     The stance must reflect a genuinely balanced view, not drift to either extreme.
+    The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否真实反映了平衡视角？"
             "如果论点同时承认上行机会和下行风险，立场就应体现平衡，不应偏向任何极端与中性分析自相矛盾。"
-            "最后一行必须输出：'最终交易建议: **持有**'"
-            "（仅在论点明确偏向某一方时可用'最终交易建议: **买入**'或'最终交易建议: **减持**'）。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
+            "并可加修饰词体现节奏与幅度，例如：\n"
+            "维持现仓 / 谨慎观望 / 小幅加仓 / 小幅减仓 / 分批调整 / 设置止损后持有。\n"
+            "示例：风险建议: **维持现仓，密切观察关键支撑位**  或  风险建议: **小幅减仓，等待企稳信号**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "genuinely reflect the balanced view you've argued? "
-        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **HOLD**' "
-        "(use 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' "
-        "only when your arguments clearly lean one way)."
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
+        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
+        "Options: Maintain Position / Cautiously Observe / Slightly Increase / "
+        "Slightly Reduce / Adjust in Batches / Hold with Stop-Loss Set. "
+        "Example: RISK RECOMMENDATION: **Maintain Position, Monitor Key Support**  or  "
+        "RISK RECOMMENDATION: **Slightly Reduce, Wait for Stabilization Signal**"
     )
 
 
