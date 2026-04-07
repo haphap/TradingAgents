@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage
 import time
 import json
+import openai
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
@@ -12,6 +13,8 @@ from tradingagents.agents.utils.agent_utils import (
     normalize_chinese_role_terms,
     strip_feedback_snapshot,
     strip_role_prefix,
+    truncate_for_prompt,
+    truncate_response_for_prompt,
 )
 
 
@@ -19,7 +22,9 @@ def create_bull_researcher(llm, memory):
     def bull_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         bull_history = investment_debate_state.get("bull_history", "")
-        current_response = investment_debate_state.get("current_response", "")
+        current_response = truncate_response_for_prompt(
+            investment_debate_state.get("current_response", "")
+        )
         bull_snapshot = investment_debate_state.get("bull_snapshot", "")
         bear_snapshot = investment_debate_state.get("bear_snapshot", "")
         debate_brief = investment_debate_state.get("debate_brief", "")
@@ -34,6 +39,7 @@ def create_bull_researcher(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+        past_memory_str = truncate_response_for_prompt(past_memory_str)
 
         prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 
@@ -62,8 +68,16 @@ After your normal argument, append an exact block using this template:
 {get_snapshot_writing_instruction()}{get_language_instruction()}
 """
 
-        response = llm.invoke(prompt)
-        raw_content = normalize_chinese_role_terms(response.content)
+        try:
+            response = llm.invoke(prompt)
+            raw_content = normalize_chinese_role_terms(response.content)
+        except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
+            fallback = (
+                f"{localize_role_name('Bull Analyst')}：本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
+                if hasattr(e, '__class__') else str(e)
+            )
+            raw_content = fallback
+
         argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Bull Analyst")
         argument = f"{localize_role_name('Bull Analyst')}: {argument_body}"
         new_bull_snapshot = extract_feedback_snapshot(raw_content)

@@ -1,5 +1,6 @@
 import time
 import json
+import openai
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
@@ -12,6 +13,7 @@ from tradingagents.agents.utils.agent_utils import (
     strip_feedback_snapshot,
     strip_role_prefix,
     truncate_for_prompt,
+    truncate_response_for_prompt,
 )
 
 
@@ -19,8 +21,12 @@ def create_neutral_debator(llm):
     def neutral_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
         neutral_history = risk_debate_state.get("neutral_history", "")
-        current_aggressive_response = risk_debate_state.get("current_aggressive_response", "")
-        current_conservative_response = risk_debate_state.get("current_conservative_response", "")
+        current_aggressive_response = truncate_response_for_prompt(
+            risk_debate_state.get("current_aggressive_response", "")
+        )
+        current_conservative_response = truncate_response_for_prompt(
+            risk_debate_state.get("current_conservative_response", "")
+        )
         aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
         conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
         neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
@@ -57,11 +63,16 @@ After your normal argument, append an exact block using this template:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""
 
-        response = llm.invoke(prompt)
-        raw_content = normalize_chinese_role_terms(response.content)
-        argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Neutral Analyst")
-        argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
-        new_neutral_snapshot = extract_feedback_snapshot(raw_content)
+        try:
+            response = llm.invoke(prompt)
+            raw_content = normalize_chinese_role_terms(response.content)
+            argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Neutral Analyst")
+            argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
+            new_neutral_snapshot = extract_feedback_snapshot(raw_content)
+        except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
+            argument_body = f"本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
+            argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
+            new_neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
         new_debate_brief = build_debate_brief(
             {
                 "Aggressive Analyst": aggressive_snapshot,
