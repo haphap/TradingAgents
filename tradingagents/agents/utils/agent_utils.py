@@ -65,6 +65,15 @@ def truncate_for_prompt(
     return f"[Content trimmed, omitted {omitted} characters]\n{text[-limit:]}"
 
 
+def truncate_response_for_prompt(text: str) -> str:
+    """Truncate a previous agent argument/response for inclusion as debate context.
+
+    Uses a tighter limit than full reports to prevent debate history from bloating
+    the prompt beyond the local model's context window.
+    """
+    return truncate_for_prompt(text, limit_key="response_context_char_limit", default_limit=3000)
+
+
 def get_snapshot_template() -> str:
     if _is_chinese_output():
         return """反馈快照:
@@ -83,17 +92,19 @@ def get_snapshot_template() -> str:
 def get_snapshot_writing_instruction() -> str:
     if _is_chinese_output():
         return (
-            "反馈快照每项必须填写一句具体内容：「立场」写明当前评级或核心判断；"
-            "「本轮新增」写本轮补充的关键证据或论点；「关键反驳」写针对对手的核心反驳；"
-            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语。"
+            "反馈快照每项必须填写一句具体内容，且四项内容不得重复：\n"
+            "「立场」写明当前评级或核心判断（如：维持卖出，目标价XX元）；\n"
+            "「本轮新增」写本轮我方新补充的关键证据或论点（聚焦我方视角，不提对手）；\n"
+            "「关键反驳」写针对对手本轮论点的具体反驳（必须明确指出对手观点并反驳，与「本轮新增」内容不同）；\n"
+            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语，禁止四项内容相同或相似。"
         )
     return (
-        "Each snapshot field must contain one concrete sentence: "
+        "Each snapshot field must contain one concrete sentence, and all four must be distinct: "
         "'Stance' states the current rating or core judgment; "
-        "'New this round' gives the key evidence or argument added this round; "
-        "'Key rebuttal' states the main counter-argument against the opponent; "
+        "'New this round' gives NEW evidence or argument from MY side this round (no mention of opponent); "
+        "'Key rebuttal' explicitly names the opponent's claim and rebuts it (must differ from 'New this round'); "
         "'To verify' names the key question or data to track next round. "
-        "No placeholders."
+        "No placeholders. No two fields may say the same thing."
     )
 
 
