@@ -68,30 +68,32 @@ def truncate_for_prompt(
 def get_snapshot_template() -> str:
     if _is_chinese_output():
         return """反馈快照:
-- 当前观点:
-- 发生了什么变化:
-- 为什么变化:
+- 立场:
+- 本轮新增:
 - 关键反驳:
-- 下一轮教训:"""
+- 待验证:"""
 
     return """FEEDBACK SNAPSHOT:
-- Current thesis:
-- What changed:
-- Why it changed:
+- Stance:
+- New this round:
 - Key rebuttal:
-- Lesson for next round:"""
+- To verify:"""
 
 
 def get_snapshot_writing_instruction() -> str:
     if _is_chinese_output():
         return (
-            "反馈快照中的每一项都必须填写具体内容，直接总结本轮新增观点、证据、反驳和下一轮要验证的点。"
-            "禁止填写“未明确说明”“暂无”“同上”“无变化”这类占位语。"
+            "反馈快照每项必须填写一句具体内容：「立场」写明当前评级或核心判断；"
+            "「本轮新增」写本轮补充的关键证据或论点；「关键反驳」写针对对手的核心反驳；"
+            "「待验证」写下一轮需要跟踪的关键问题或数据。禁止填写占位语。"
         )
     return (
-        "Every field in the feedback snapshot must contain concrete content grounded in this round's argument, "
-        "including what changed, why it changed, the key rebuttal, and what to verify next round. "
-        "Do not use placeholders like 'not specified', 'none', 'same as above', or 'no change'."
+        "Each snapshot field must contain one concrete sentence: "
+        "'Stance' states the current rating or core judgment; "
+        "'New this round' gives the key evidence or argument added this round; "
+        "'Key rebuttal' states the main counter-argument against the opponent; "
+        "'To verify' names the key question or data to track next round. "
+        "No placeholders."
     )
 
 
@@ -216,12 +218,12 @@ def get_aggressive_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「当前观点」中的立场是否与你所强调的高回报机会一致？"
+            "在附上快照之前，先自我审查：你「立场」字段是否与你所强调的高回报机会一致？"
             "如果你的论点支持激进入场，快照中的立场就应反映这一判断，不应出现论点强调上行空间、"
             "立场却极度保守或建议退出的自相矛盾情形。"
         )
     return (
-        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "align with the high-reward case you've argued? If your argument supports aggressive entry, your snapshot "
         "stance should reflect that — do not argue for upside potential while simultaneously signaling extreme caution."
     )
@@ -233,12 +235,12 @@ def get_conservative_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「当前观点」中的立场是否与你所强调的风险和资产保护一致？"
+            "在附上快照之前，先自我审查：你「立场」字段是否与你所强调的风险和资产保护一致？"
             "如果你的论点强调下行风险，快照中的立场就应反映这一判断，不应出现论点满是风险警告、"
             "立场却比激进分析师还乐观的自相矛盾情形。"
         )
     return (
-        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "align with the risk-protection case you've argued? If your argument emphasizes downside risks, your "
         "snapshot stance should reflect caution — do not argue for capital preservation while simultaneously "
         "signaling a more bullish stance than the Aggressive Analyst."
@@ -251,12 +253,12 @@ def get_neutral_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「当前观点」中的立场是否真实反映了平衡视角？"
+            "在附上快照之前，先自我审查：你「立场」字段是否真实反映了平衡视角？"
             "如果你的论点同时承认上行机会和下行风险，快照中的立场就应体现这种平衡，"
             "不应偏向任何一方的极端，与你所展示的中性分析自相矛盾。"
         )
     return (
-        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "genuinely reflect the balanced view you've argued? If your argument acknowledges both upside and downside, "
         "your snapshot stance should reflect that balance — do not drift to either extreme in a way that contradicts "
         "the moderate, evidence-based analysis you've presented."
@@ -414,23 +416,17 @@ def _contains_placeholder_snapshot(snapshot: str) -> bool:
 
 def _snapshot_field_labels() -> list[str]:
     if _is_chinese_output():
-        return ["当前观点", "发生了什么变化", "为什么变化", "关键反驳", "下一轮教训"]
-    return [
-        "Current thesis",
-        "What changed",
-        "Why it changed",
-        "Key rebuttal",
-        "Lesson for next round",
-    ]
+        return ["立场", "本轮新增", "关键反驳", "待验证"]
+    return ["Stance", "New this round", "Key rebuttal", "To verify"]
 
 
 def _snapshot_field_aliases() -> dict[str, tuple[str, ...]]:
     return {
-        "current_thesis": ("当前观点", "Current thesis"),
-        "what_changed": ("发生了什么变化", "What changed"),
-        "why_changed": ("为什么变化", "Why it changed"),
+        # primary label first; legacy labels kept for backward-compatible parsing
+        "stance": ("立场", "Stance", "当前观点", "Current thesis"),
+        "new_this_round": ("本轮新增", "New this round", "发生了什么变化", "What changed", "为什么变化", "Why it changed"),
         "key_rebuttal": ("关键反驳", "Key rebuttal"),
-        "lesson_next_round": ("下一轮教训", "Lesson for next round"),
+        "to_verify": ("待验证", "To verify", "下一轮教训", "Lesson for next round"),
     }
 
 
@@ -497,62 +493,55 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
     sentences = _extract_sentences(body)
     first = _condense_excerpt(sentences[0], 120) if sentences else _condense_excerpt(body, 120)
     second = _condense_excerpt(sentences[1], 120) if len(sentences) > 1 else first
-    third = _condense_excerpt(sentences[2], 120) if len(sentences) > 2 else second
 
     if _is_chinese_output():
         rating = _detect_chinese_rating(text)
-        current = rating
-        changed = (
-            second if len(sentences) > 1 else f"本轮围绕“{rating}”补充了更明确的交易依据、风险边界和执行条件。"
-        )
-        why = (
-            third if len(sentences) > 2 else f"变化来自本轮新增的数据证据、市场信号和对手论点带来的判断修正。"
+        new_this_round = (
+            second if len(sentences) > 1 else f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
         )
         rebuttal_source = next(
             (s for s in sentences if any(word in s for word in ("但", "然而", "不过", "反驳", "忽略", "高估"))),
-            second or f"本轮核心反驳集中在对手忽略了影响“{rating}”判断的关键数据或风险约束。",
+            second or f"对手忽略了影响“{rating}”判断的关键数据或风险约束。",
         )
-        lesson_source = next(
+        to_verify = next(
             (s for s in sentences if any(word in s for word in ("需要", "继续", "监控", "跟踪", "等待", "验证", "警惕"))),
-            f"下一轮需要继续验证支持“{rating}”结论的关键数据、风险触发条件和执行时点。",
+            f"下一轮验证支持“{rating}”的关键数据和风险触发条件。",
         )
         return (
             "反馈快照:\n"
-            f"- 当前观点: {current}\n"
-            f"- 发生了什么变化: {changed}\n"
-            f"- 为什么变化: {why}\n"
+            f"- 立场: {rating}\n"
+            f"- 本轮新增: {new_this_round}\n"
             f"- 关键反驳: {rebuttal_source}\n"
-            f"- 下一轮教训: {lesson_source}"
+            f"- 待验证: {to_verify}"
         )
 
     rating = _detect_english_rating(text)
-    current = rating
-    changed = second if len(sentences) > 1 else f"This round added clearer trading evidence, risk boundaries, and execution conditions behind the {rating} call."
-    why = third if len(sentences) > 2 else "The update came from new evidence, market signals, and adjustments prompted by the opponent's latest claims."
+    new_this_round = (
+        second if len(sentences) > 1
+        else f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
+    )
     rebuttal_source = next(
         (s for s in sentences if any(word in s.lower() for word in ("but", "however", "rebut", "weakness", "risk", "miss"))),
-        second or f"The key rebuttal is that the opposing case missed the main evidence or risk controls behind the {rating} stance.",
+        second or f"The opposing case missed the main evidence or risk controls behind the {rating} stance.",
     )
-    lesson_source = next(
+    to_verify = next(
         (s for s in sentences if any(word in s.lower() for word in ("monitor", "watch", "verify", "track", "wait", "risk"))),
-        f"Next round should verify the core data assumptions, risk triggers, and timing conditions behind the {rating} stance.",
+        f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance.",
     )
     return (
         "FEEDBACK SNAPSHOT:\n"
-        f"- Current thesis: {current}\n"
-        f"- What changed: {changed}\n"
-        f"- Why it changed: {why}\n"
+        f"- Stance: {rating}\n"
+        f"- New this round: {new_this_round}\n"
         f"- Key rebuttal: {rebuttal_source}\n"
-        f"- Lesson for next round: {lesson_source}"
+        f"- To verify: {to_verify}"
     )
-
 
 def extract_feedback_snapshot(text: str) -> str:
     """Extract the structured feedback snapshot block from an agent response."""
     if not text:
         if _is_chinese_output():
-            return "反馈快照:\n- 当前观点: 暂无。\n- 发生了什么变化: 暂无。\n- 为什么变化: 暂无。\n- 关键反驳: 暂无。\n- 下一轮教训: 暂无。"
-        return "FEEDBACK SNAPSHOT:\n- Current thesis: None yet.\n- What changed: None yet.\n- Why it changed: None yet.\n- Key rebuttal: None yet.\n- Lesson for next round: None yet."
+            return "反馈快照:\n- 立场: 暂无。\n- 本轮新增: 暂无。\n- 关键反驳: 暂无。\n- 待验证: 暂无。"
+        return "FEEDBACK SNAPSHOT:\n- Stance: None yet.\n- New this round: None yet.\n- Key rebuttal: None yet.\n- To verify: None yet."
 
     for marker in SNAPSHOT_MARKERS:
         idx = text.rfind(marker)
