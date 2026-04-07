@@ -177,11 +177,24 @@ def select_openrouter_model() -> str:
 def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
     """Fetch locally available models from an Ollama/llama.cpp server via OpenAI-compatible /v1/models."""
     import requests
+
+    # Known short-name aliases that duplicate a canonical full model ID.
+    # When both appear in the server list, suppress the alias.
+    _ALIAS_TO_CANONICAL = {
+        "Qwen3.5-35B-A3B": "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M",
+    }
+
     try:
         resp = requests.get(f"{base_url}/models", timeout=5)
         resp.raise_for_status()
-        models = resp.json().get("data", [])
-        return [(m["id"], m["id"]) for m in models]
+        raw_ids = [m["id"] for m in resp.json().get("data", [])]
+        # Suppress alias if its canonical counterpart is also present
+        canonical_ids = set(raw_ids)
+        deduped = [
+            mid for mid in raw_ids
+            if not (_ALIAS_TO_CANONICAL.get(mid) in canonical_ids)
+        ]
+        return [(mid, mid) for mid in deduped]
     except Exception as e:
         console.print(f"\n[yellow]Could not fetch Ollama models from {base_url}: {e}[/yellow]")
         # Fall back to static catalog
