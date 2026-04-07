@@ -169,32 +169,44 @@ def get_localized_final_proposal_instruction() -> str:
 
 
 def get_bear_proposal_instruction() -> str:
-    """Role-constrained proposal instruction for the Bear/Short Analyst.
-    Enforces that the conclusion must be Underweight or Sell, consistent with the bearish role.
+    """Consistency instruction for the Bear/Short Analyst.
+    The conclusion must logically follow from the bearish arguments presented.
     """
     if _is_chinese_output():
         return (
-            "作为空头分析师，你的最终立场必须是减持或卖出，不得选择买入、增持或持有。"
-            "以'最终交易建议: **减持**'或'最终交易建议: **卖出**'结束你的论点。"
+            "在给出最终结论前，先自我审查：你的评级是否与你所列举的风险和负面证据一致？"
+            "作为空头分析师，如果你的论点强调了下行风险，结论就应反映这一判断（通常为减持或卖出）。"
+            "不允许出现论点强调风险、结论却比多头分析师还乐观的情形。"
+            "以'最终交易建议: **减持**'或'最终交易建议: **卖出**'（或在有力证据支撑时用**持有**）结束。"
         )
     return (
-        "As a Bear Analyst, your conclusion must be Underweight or Sell — never Buy, Overweight, or Hold. "
-        "Always conclude with 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' or 'FINAL TRANSACTION PROPOSAL: **SELL**'."
+        "Before stating your conclusion, verify self-consistency: does your rating logically follow from the risks "
+        "and downsides you've argued? As a Bear Analyst, if your argument emphasizes significant risks, your "
+        "conclusion should reflect that (typically UNDERWEIGHT or SELL). You must not conclude more optimistically "
+        "than your own arguments warrant — a bearish case cannot end with BUY or OVERWEIGHT. "
+        "Conclude with 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' or 'FINAL TRANSACTION PROPOSAL: **SELL**' "
+        "(or **HOLD** only when your arguments genuinely support a neutral stance)."
     )
 
 
 def get_bull_proposal_instruction() -> str:
-    """Role-constrained proposal instruction for the Bull/Long Analyst.
-    Enforces that the conclusion must be Buy or Overweight, consistent with the bullish role.
+    """Consistency instruction for the Bull/Long Analyst.
+    The conclusion must logically follow from the bullish arguments presented.
     """
     if _is_chinese_output():
         return (
-            "作为多头分析师，你的最终立场必须是买入或增持，不得选择卖出、减持或持有。"
-            "以'最终交易建议: **买入**'或'最终交易建议: **增持**'结束你的论点。"
+            "在给出最终结论前，先自我审查：你的评级是否与你所列举的增长潜力和正面证据一致？"
+            "作为多头分析师，如果你的论点强调了上行机会，结论就应反映这一判断（通常为买入或增持）。"
+            "不允许出现论点强调机会、结论却比空头分析师还悲观的情形。"
+            "以'最终交易建议: **买入**'或'最终交易建议: **增持**'（或在有力证据支撑时用**持有**）结束。"
         )
     return (
-        "As a Bull Analyst, your conclusion must be Buy or Overweight — never Sell, Underweight, or Hold. "
-        "Always conclude with 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**'."
+        "Before stating your conclusion, verify self-consistency: does your rating logically follow from the "
+        "growth potential and positive indicators you've argued? As a Bull Analyst, if your argument emphasizes "
+        "strong upside, your conclusion should reflect that (typically BUY or OVERWEIGHT). You must not conclude "
+        "more pessimistically than your own arguments warrant — a bullish case cannot end with SELL or UNDERWEIGHT. "
+        "Conclude with 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**' "
+        "(or **HOLD** only when your arguments genuinely support a neutral stance)."
     )
 
 
