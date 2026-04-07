@@ -7,6 +7,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    get_conservative_risk_instruction,
     localize_role_name,
     normalize_chinese_role_terms,
     strip_feedback_snapshot,
@@ -51,6 +52,7 @@ Last neutral argument body: {current_neutral_response}
 If there are no responses from the other viewpoints yet, present your own argument based on the available data.
 
 Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.
+{get_conservative_risk_instruction()}
 After your normal argument, append an exact block using this template:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""

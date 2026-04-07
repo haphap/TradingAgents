@@ -6,6 +6,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    get_aggressive_risk_instruction,
     localize_role_name,
     )
 
@@ -47,6 +48,7 @@ Last neutral argument body: {current_neutral_response}
 If there are no responses from the other viewpoints yet, present your own argument based on the available data.
 
 Engage actively by addressing any specific concerns raised, refuting the weaknesses in their logic, and asserting the benefits of risk-taking to outpace market norms. Maintain a focus on debating and persuading, not just presenting data. Challenge each counterpoint to underscore why a high-risk approach is optimal. Output conversationally as if you are speaking without any special formatting.
+{get_aggressive_risk_instruction()}
 After your normal argument, append an exact block using this template:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""

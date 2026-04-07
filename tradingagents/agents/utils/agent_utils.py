@@ -210,7 +210,60 @@ def get_bull_proposal_instruction() -> str:
     )
 
 
-def get_collaboration_stop_instruction() -> str:
+def get_aggressive_risk_instruction() -> str:
+    """Consistency instruction for the Aggressive Risk Analyst.
+    The stance must align with the high-reward arguments made.
+    """
+    if _is_chinese_output():
+        return (
+            "在附上快照之前，先自我审查：你「当前观点」中的立场是否与你所强调的高回报机会一致？"
+            "如果你的论点支持激进入场，快照中的立场就应反映这一判断，不应出现论点强调上行空间、"
+            "立场却极度保守或建议退出的自相矛盾情形。"
+        )
+    return (
+        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "align with the high-reward case you've argued? If your argument supports aggressive entry, your snapshot "
+        "stance should reflect that — do not argue for upside potential while simultaneously signaling extreme caution."
+    )
+
+
+def get_conservative_risk_instruction() -> str:
+    """Consistency instruction for the Conservative Risk Analyst.
+    The stance must align with the risk-protection arguments made.
+    """
+    if _is_chinese_output():
+        return (
+            "在附上快照之前，先自我审查：你「当前观点」中的立场是否与你所强调的风险和资产保护一致？"
+            "如果你的论点强调下行风险，快照中的立场就应反映这一判断，不应出现论点满是风险警告、"
+            "立场却比激进分析师还乐观的自相矛盾情形。"
+        )
+    return (
+        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "align with the risk-protection case you've argued? If your argument emphasizes downside risks, your "
+        "snapshot stance should reflect caution — do not argue for capital preservation while simultaneously "
+        "signaling a more bullish stance than the Aggressive Analyst."
+    )
+
+
+def get_neutral_risk_instruction() -> str:
+    """Consistency instruction for the Neutral Risk Analyst.
+    The stance must reflect a genuinely balanced view, not drift to either extreme.
+    """
+    if _is_chinese_output():
+        return (
+            "在附上快照之前，先自我审查：你「当前观点」中的立场是否真实反映了平衡视角？"
+            "如果你的论点同时承认上行机会和下行风险，快照中的立场就应体现这种平衡，"
+            "不应偏向任何一方的极端，与你所展示的中性分析自相矛盾。"
+        )
+    return (
+        "Before appending the snapshot, verify self-consistency: does your stated stance in 'Current thesis' "
+        "genuinely reflect the balanced view you've argued? If your argument acknowledges both upside and downside, "
+        "your snapshot stance should reflect that balance — do not drift to either extreme in a way that contradicts "
+        "the moderate, evidence-based analysis you've presented."
+    )
+
+
+
     if _is_chinese_output():
         return (
             " If you or another assistant has already reached a final deliverable, prefer the user-facing line "
