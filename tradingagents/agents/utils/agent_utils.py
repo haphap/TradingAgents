@@ -168,6 +168,36 @@ def get_localized_final_proposal_instruction() -> str:
     )
 
 
+def get_bear_proposal_instruction() -> str:
+    """Role-constrained proposal instruction for the Bear/Short Analyst.
+    Enforces that the conclusion must be Underweight or Sell, consistent with the bearish role.
+    """
+    if _is_chinese_output():
+        return (
+            "作为空头分析师，你的最终立场必须是减持或卖出，不得选择买入、增持或持有。"
+            "以'最终交易建议: **减持**'或'最终交易建议: **卖出**'结束你的论点。"
+        )
+    return (
+        "As a Bear Analyst, your conclusion must be Underweight or Sell — never Buy, Overweight, or Hold. "
+        "Always conclude with 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' or 'FINAL TRANSACTION PROPOSAL: **SELL**'."
+    )
+
+
+def get_bull_proposal_instruction() -> str:
+    """Role-constrained proposal instruction for the Bull/Long Analyst.
+    Enforces that the conclusion must be Buy or Overweight, consistent with the bullish role.
+    """
+    if _is_chinese_output():
+        return (
+            "作为多头分析师，你的最终立场必须是买入或增持，不得选择卖出、减持或持有。"
+            "以'最终交易建议: **买入**'或'最终交易建议: **增持**'结束你的论点。"
+        )
+    return (
+        "As a Bull Analyst, your conclusion must be Buy or Overweight — never Sell, Underweight, or Hold. "
+        "Always conclude with 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**'."
+    )
+
+
 def get_collaboration_stop_instruction() -> str:
     if _is_chinese_output():
         return (

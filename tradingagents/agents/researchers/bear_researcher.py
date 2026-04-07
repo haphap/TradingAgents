@@ -4,8 +4,8 @@ import json
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
+    get_bear_proposal_instruction,
     get_language_instruction,
-    get_localized_final_proposal_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
     localize_role_name,
@@ -58,7 +58,7 @@ Last bull argument body: {current_response}
 Reflections from similar situations and lessons learned: {past_memory_str}
 Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
 When writing in Chinese, use the exact role names "{localize_role_name('Bear Analyst')}" and "{localize_role_name('Bull Analyst')}". Do not use variants like "熊派分析师" or "牛派分析师".
-Your main argument body must be written entirely in Chinese. {get_localized_final_proposal_instruction()}
+Your main argument body must be written entirely in Chinese. {get_bear_proposal_instruction()}
 After your normal argument, append an exact block using this template:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}{get_language_instruction()}
