@@ -10,11 +10,11 @@ from tradingagents.agents.utils.agent_utils import (
     get_snapshot_writing_instruction,
     get_aggressive_risk_instruction,
     localize_role_name,
+    make_display_snapshot,
     normalize_chinese_role_terms,
+    save_snapshot_file,
     strip_feedback_snapshot,
     strip_role_prefix,
-    truncate_for_prompt,
-    truncate_response_for_prompt,
     )
 
 
@@ -23,23 +23,19 @@ def create_aggressive_debator(llm):
         risk_debate_state = state["risk_debate_state"]
         aggressive_history = risk_debate_state.get("aggressive_history", "")
         round_index = risk_debate_state.get("count", 0)
-        current_conservative_response = truncate_response_for_prompt(
-            risk_debate_state.get("current_conservative_response", "")
-        )
-        current_neutral_response = truncate_response_for_prompt(
-            risk_debate_state.get("current_neutral_response", "")
-        )
+        current_conservative_response = risk_debate_state.get("current_conservative_response", "")
+        current_neutral_response = risk_debate_state.get("current_neutral_response", "")
         aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
         conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
         neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
         debate_brief = risk_debate_state.get("debate_brief", "")
 
-        market_research_report = truncate_for_prompt(state["market_report"])
-        sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        news_report = truncate_for_prompt(state["news_report"])
-        fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
+        market_research_report = state["market_report"]
+        sentiment_report = state["sentiment_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
 
-        trader_decision = truncate_for_prompt(state["trader_investment_plan"])
+        trader_decision = state["trader_investment_plan"]
 
         prompt = f"""As the Aggressive Risk Analyst, your role is to actively champion high-reward, high-risk opportunities, emphasizing bold strategies and competitive advantages. When evaluating the trader's decision or plan, focus intently on the potential upside, growth potential, and innovative benefits—even when these come with elevated risk. Use the provided market data and sentiment analysis to strengthen your arguments and challenge the opposing views. Specifically, respond directly to each point made by the conservative and neutral analysts, countering with data-driven rebuttals and persuasive reasoning. Highlight where their caution might miss critical opportunities or where their assumptions may be overly conservative. Here is the trader's decision:
 
@@ -70,11 +66,16 @@ After your normal argument, append an exact block using this template:
             raw_content = normalize_chinese_role_terms(response.content)
             argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Aggressive Analyst")
             argument = f"{localize_role_name('Aggressive Analyst')}: {argument_body}"
-            new_aggressive_snapshot = extract_feedback_snapshot(raw_content)
+            new_aggressive_snapshot_full = extract_feedback_snapshot(raw_content)
+            ticker = state.get("company_of_interest", "unknown")
+            trade_date = state.get("trade_date", "unknown")
+            snapshot_path = save_snapshot_file(new_aggressive_snapshot_full, "Aggressive Analyst", ticker, trade_date, round_index + 1)
+            new_aggressive_snapshot = make_display_snapshot(new_aggressive_snapshot_full, snapshot_path)
         except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
             argument_body = f"本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
             argument = f"{localize_role_name('Aggressive Analyst')}: {argument_body}"
             new_aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
+            snapshot_path = risk_debate_state.get("aggressive_snapshot_path", "")
         new_debate_brief = build_debate_brief(
             {
                 "Aggressive Analyst": new_aggressive_snapshot,
@@ -92,12 +93,13 @@ After your normal argument, append an exact block using this template:
             "latest_speaker": "Aggressive",
             "current_aggressive_response": argument,
             "current_conservative_response": risk_debate_state.get("current_conservative_response", ""),
-            "current_neutral_response": risk_debate_state.get(
-                "current_neutral_response", ""
-            ),
+            "current_neutral_response": risk_debate_state.get("current_neutral_response", ""),
             "aggressive_snapshot": new_aggressive_snapshot,
             "conservative_snapshot": conservative_snapshot,
             "neutral_snapshot": neutral_snapshot,
+            "aggressive_snapshot_path": snapshot_path,
+            "conservative_snapshot_path": risk_debate_state.get("conservative_snapshot_path", ""),
+            "neutral_snapshot_path": risk_debate_state.get("neutral_snapshot_path", ""),
             "debate_brief": new_debate_brief,
             "judge_decision": risk_debate_state.get("judge_decision", ""),
             "count": risk_debate_state["count"] + 1,

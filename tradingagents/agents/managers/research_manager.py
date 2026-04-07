@@ -8,26 +8,34 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    load_snapshot_file,
     localize_label,
     localize_rating_term,
     localize_role_name,
     normalize_chinese_role_terms,
-    truncate_for_prompt,
 )
 
 
 def create_research_manager(llm, memory):
     def research_manager_node(state) -> dict:
         instrument_context = build_instrument_context(state["company_of_interest"])
-        market_research_report = truncate_for_prompt(state["market_report"])
-        sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        news_report = truncate_for_prompt(state["news_report"])
-        fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
+        market_research_report = state["market_report"]
+        sentiment_report = state["sentiment_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
 
         investment_debate_state = state["investment_debate_state"]
-        bull_snapshot = investment_debate_state.get("bull_snapshot", "")
-        bear_snapshot = investment_debate_state.get("bear_snapshot", "")
+        bull_snapshot_display = investment_debate_state.get("bull_snapshot", "")
+        bear_snapshot_display = investment_debate_state.get("bear_snapshot", "")
         debate_brief = investment_debate_state.get("debate_brief", "")
+
+        # Load full snapshots from files
+        bull_snapshot_full = load_snapshot_file(investment_debate_state.get("bull_snapshot_path", "")) or bull_snapshot_display
+        bear_snapshot_full = load_snapshot_file(investment_debate_state.get("bear_snapshot_path", "")) or bear_snapshot_display
+
+        # Last-round full debate text from each side
+        bull_last = investment_debate_state.get("current_bull_response", "")
+        bear_last = investment_debate_state.get("current_bear_response", "")
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -59,11 +67,17 @@ Here is the latest debate context:
 {localize_label("Rolling debate brief:", "滚动辩论摘要:")}
 {debate_brief}
 
-{localize_label("Bull latest snapshot:", f"{localize_role_name('Bull Analyst')} 最新快照:")}
-{bull_snapshot}
+{localize_label("Bull full snapshot:", f"{localize_role_name('Bull Analyst')} 完整快照:")}
+{bull_snapshot_full}
 
-{localize_label("Bear latest snapshot:", f"{localize_role_name('Bear Analyst')} 最新快照:")}
-{bear_snapshot}{get_language_instruction()}
+{localize_label("Bear full snapshot:", f"{localize_role_name('Bear Analyst')} 完整快照:")}
+{bear_snapshot_full}
+
+{localize_label("Bull last-round full argument:", f"{localize_role_name('Bull Analyst')} 最后一轮全文:")}
+{bull_last}
+
+{localize_label("Bear last-round full argument:", f"{localize_role_name('Bear Analyst')} 最后一轮全文:")}
+{bear_last}{get_language_instruction()}
 """
         response = llm.invoke(prompt)
         normalized_content = normalize_chinese_role_terms(response.content)
@@ -83,8 +97,12 @@ Here is the latest debate context:
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
             "current_response": normalized_content,
-            "bull_snapshot": bull_snapshot,
-            "bear_snapshot": bear_snapshot,
+            "current_bull_response": investment_debate_state.get("current_bull_response", ""),
+            "current_bear_response": investment_debate_state.get("current_bear_response", ""),
+            "bull_snapshot": bull_snapshot_display,
+            "bear_snapshot": bear_snapshot_display,
+            "bull_snapshot_path": investment_debate_state.get("bull_snapshot_path", ""),
+            "bear_snapshot_path": investment_debate_state.get("bear_snapshot_path", ""),
             "debate_brief": updated_brief,
             "latest_speaker": "Research Manager",
             "count": investment_debate_state["count"],

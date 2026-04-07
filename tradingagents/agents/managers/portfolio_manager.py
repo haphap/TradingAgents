@@ -7,11 +7,11 @@ from tradingagents.agents.utils.agent_utils import (
     get_localized_rating_scale,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    load_snapshot_file,
     localize_label,
     localize_rating_term,
     localize_role_name,
     normalize_chinese_role_terms,
-    truncate_for_prompt,
 )
 
 
@@ -20,16 +20,26 @@ def create_portfolio_manager(llm, memory):
 
         instrument_context = build_instrument_context(state["company_of_interest"])
         risk_debate_state = state["risk_debate_state"]
-        market_research_report = truncate_for_prompt(state["market_report"])
-        news_report = truncate_for_prompt(state["news_report"])
-        fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
-        sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        research_plan = truncate_for_prompt(state["investment_plan"])
-        trader_plan = truncate_for_prompt(state["trader_investment_plan"])
-        aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
-        conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
-        neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
+        market_research_report = state["market_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
+        sentiment_report = state["sentiment_report"]
+        research_plan = state["investment_plan"]
+        trader_plan = state["trader_investment_plan"]
+        aggressive_snapshot_display = risk_debate_state.get("aggressive_snapshot", "")
+        conservative_snapshot_display = risk_debate_state.get("conservative_snapshot", "")
+        neutral_snapshot_display = risk_debate_state.get("neutral_snapshot", "")
         debate_brief = risk_debate_state.get("debate_brief", "")
+
+        # Load full snapshots from files
+        aggressive_snapshot_full = load_snapshot_file(risk_debate_state.get("aggressive_snapshot_path", "")) or aggressive_snapshot_display
+        conservative_snapshot_full = load_snapshot_file(risk_debate_state.get("conservative_snapshot_path", "")) or conservative_snapshot_display
+        neutral_snapshot_full = load_snapshot_file(risk_debate_state.get("neutral_snapshot_path", "")) or neutral_snapshot_display
+
+        # Last-round full arguments from each debator
+        aggressive_last = risk_debate_state.get("current_aggressive_response", "")
+        conservative_last = risk_debate_state.get("current_conservative_response", "")
+        neutral_last = risk_debate_state.get("current_neutral_response", "")
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -61,14 +71,23 @@ def create_portfolio_manager(llm, memory):
 **{localize_label("Rolling Risk Debate Brief", "滚动风险辩论摘要")}:**
 {debate_brief}
 
-**{localize_label("Aggressive Snapshot", f"{localize_role_name('Aggressive Analyst')} 最新快照")}:**
-{aggressive_snapshot}
+**{localize_label("Aggressive full snapshot", f"{localize_role_name('Aggressive Analyst')} 完整快照")}:**
+{aggressive_snapshot_full}
 
-**{localize_label("Conservative Snapshot", f"{localize_role_name('Conservative Analyst')} 最新快照")}:**
-{conservative_snapshot}
+**{localize_label("Conservative full snapshot", f"{localize_role_name('Conservative Analyst')} 完整快照")}:**
+{conservative_snapshot_full}
 
-**{localize_label("Neutral Snapshot", f"{localize_role_name('Neutral Analyst')} 最新快照")}:**
-{neutral_snapshot}
+**{localize_label("Neutral full snapshot", f"{localize_role_name('Neutral Analyst')} 完整快照")}:**
+{neutral_snapshot_full}
+
+**{localize_label("Aggressive last-round full argument", f"{localize_role_name('Aggressive Analyst')} 最后一轮全文")}:**
+{aggressive_last}
+
+**{localize_label("Conservative last-round full argument", f"{localize_role_name('Conservative Analyst')} 最后一轮全文")}:**
+{conservative_last}
+
+**{localize_label("Neutral last-round full argument", f"{localize_role_name('Neutral Analyst')} 最后一轮全文")}:**
+{neutral_last}
 
 ---
 
@@ -101,9 +120,12 @@ Append a feedback block in this exact format:
             "current_aggressive_response": risk_debate_state["current_aggressive_response"],
             "current_conservative_response": risk_debate_state["current_conservative_response"],
             "current_neutral_response": risk_debate_state["current_neutral_response"],
-            "aggressive_snapshot": aggressive_snapshot,
-            "conservative_snapshot": conservative_snapshot,
-            "neutral_snapshot": neutral_snapshot,
+            "aggressive_snapshot": aggressive_snapshot_display,
+            "conservative_snapshot": conservative_snapshot_display,
+            "neutral_snapshot": neutral_snapshot_display,
+            "aggressive_snapshot_path": risk_debate_state.get("aggressive_snapshot_path", ""),
+            "conservative_snapshot_path": risk_debate_state.get("conservative_snapshot_path", ""),
+            "neutral_snapshot_path": risk_debate_state.get("neutral_snapshot_path", ""),
             "count": risk_debate_state["count"],
         }
 

@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, RemoveMessage
+import os
 import re
 
 # Import tools from separate utility files
@@ -109,21 +110,24 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         return ""
     if _is_chinese_output():
         return (
-            "反馈快照是对本轮核心内容的极简提炼，每项严格限制在30字以内，必须用自己的语言重新概括，禁止从正文中直接复制句子：\n"
-            "「立场」：一句话评级，如「维持减持，估值偏高」；\n"
-            "「本轮新增」：我方本轮最关键的新论点，如「铜价下行压力超预期，需求端拐点未至」；\n"
-            "「关键反驳」：针对对手核心观点的一句反驳，如「多头过度依赖政策利好，忽视债务扩张风险」；\n"
-            "「待验证」：下轮需跟踪的一个具体指标或事件，如「Q2铜价走势及美联储利率决议」。\n"
-            "严禁复制正文原句，严禁开场白，严禁重复角色名，四项内容各不相同。"
+            "反馈快照是对本轮核心内容的完整、详细记录，必须用自己的语言概括，禁止从正文中直接复制句子：\n"
+            "「立场」：明确的评级及核心理由，如「维持减持——估值高企叠加技术破位，风险收益比失衡」；\n"
+            "「本轮新增」：我方本轮补充的最关键新论点，需包含具体数据或逻辑链，如「铜价跌破8000美元防线，叠加需求端Q2拐点未至，下行空间超预期」；\n"
+            "「关键反驳」：针对对手核心观点的具体反驳，需点明对手的逻辑漏洞或忽视的数据，如「多头依赖政策利好，但忽视了62%净利润增速主要来自一次性铜价红利，而非可持续的产能扩张」；\n"
+            "「待验证」：下轮需跟踪的具体指标、事件及触发条件，如「Q2铜价是否企稳8000美元上方；36元支撑位的成交量变化；美联储6月利率决议」。\n"
+            "每项内容务必具体、有据可查，严禁开场白，严禁重复角色名，四项内容各不相同。"
         )
     return (
-        "The feedback snapshot is an ultra-concise digest — each field must be AT MOST 30 words, "
-        "written in your own words (no copy-paste from the argument body), and all four must be distinct:\n"
-        "'Stance': one-line rating, e.g. 'Maintain sell — valuation stretched';\n"
-        "'New this round': the single most important NEW point I added, e.g. 'Copper demand outlook worsening';\n"
-        "'Key rebuttal': one-sentence counter to the opponent's main claim, e.g. 'Bull ignores debt expansion risk';\n"
-        "'To verify': one specific metric or event to watch next round, e.g. 'Q2 copper price trend'.\n"
-        "No copy-pasting. No greetings. No role names. No two fields alike."
+        "The feedback snapshot is a detailed, well-supported record of this round's key content. "
+        "Write in your own words (no copy-paste from the argument body), and all four fields must be distinct:\n"
+        "'Stance': clear rating with core rationale, e.g. 'Maintain Sell — valuation stretched at 30x PE with MACD death cross confirmed';\n"
+        "'New this round': the most important NEW argument added this round with specific data, "
+        "e.g. 'Copper below $8,000 support with Q2 demand inflection absent — downside exceeds expectations';\n"
+        "'Key rebuttal': specific counter to the opponent's main claim, naming their logical gap, "
+        "e.g. 'Bull ignores that 62% profit growth is a one-time copper price bonus, not sustainable capacity expansion';\n"
+        "'To verify': specific metrics, events, and trigger conditions to watch next round, "
+        "e.g. 'Whether copper stabilizes above $8,000; volume at $36 support; Fed June rate decision'.\n"
+        "Be concrete and data-driven. No greetings. No role names. No two fields alike."
     )
 
 
@@ -637,6 +641,64 @@ def extract_feedback_snapshot(text: str) -> str:
             return normalized_snapshot
 
     return _infer_feedback_snapshot_from_body(text)
+
+
+def save_snapshot_file(
+    snapshot: str,
+    role: str,
+    ticker: str,
+    trade_date: str,
+    round_num: int,
+) -> str:
+    """Save the full snapshot text to a dedicated file and return its path."""
+    from tradingagents.default_config import DEFAULT_CONFIG
+
+    results_dir = DEFAULT_CONFIG.get("results_dir", "./results")
+    safe_ticker = ticker.replace("/", "_").replace("\\", "_")
+    snap_dir = os.path.join(results_dir, safe_ticker, trade_date, "snapshots")
+    os.makedirs(snap_dir, exist_ok=True)
+    safe_role = role.lower().replace(" ", "_")
+    filename = f"{safe_role}_round_{round_num}.md"
+    path = os.path.join(snap_dir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# {role} — Round {round_num} Snapshot\n\n")
+        f.write(snapshot)
+    return path
+
+
+def load_snapshot_file(file_path: str) -> str:
+    """Load snapshot content from a file. Returns empty string if missing."""
+    if not file_path:
+        return ""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
+def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
+    """Create a brief inline display of the snapshot with a link to the full file.
+
+    Shows the first ~60 characters of each field so the CLI remains readable,
+    while the full detail is accessible via the saved file.
+    """
+    fields = _parse_snapshot_fields(full_snapshot)
+    labels = _snapshot_field_labels()
+    field_keys = list(_snapshot_field_aliases().keys())
+
+    lines = []
+    for key, label in zip(field_keys, labels):
+        value = fields.get(key, "").strip()
+        if value:
+            short = value[:60].rstrip() + ("…" if len(value) > 60 else "")
+            lines.append(f"- {label}: {short}")
+
+    display = "\n".join(lines) if lines else full_snapshot[:200]
+    if file_path:
+        link_label = "完整内容见" if _is_chinese_output() else "Full snapshot"
+        display += f"\n({link_label}: {file_path})"
+    return display
 
 
 def strip_role_prefix(text: str, role: str) -> str:

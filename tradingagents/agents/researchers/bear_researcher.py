@@ -11,11 +11,11 @@ from tradingagents.agents.utils.agent_utils import (
     get_snapshot_template,
     get_snapshot_writing_instruction,
     localize_role_name,
+    make_display_snapshot,
     normalize_chinese_role_terms,
+    save_snapshot_file,
     strip_feedback_snapshot,
     strip_role_prefix,
-    truncate_for_prompt,
-    truncate_response_for_prompt,
 )
 
 
@@ -24,16 +24,14 @@ def create_bear_researcher(llm, memory):
         investment_debate_state = state["investment_debate_state"]
         bear_history = investment_debate_state.get("bear_history", "")
         round_index = investment_debate_state.get("count", 0)
-        current_response = truncate_response_for_prompt(
-            investment_debate_state.get("current_response", "")
-        )
+        current_response = investment_debate_state.get("current_bull_response", "")
         bull_snapshot = investment_debate_state.get("bull_snapshot", "")
         bear_snapshot = investment_debate_state.get("bear_snapshot", "")
         debate_brief = investment_debate_state.get("debate_brief", "")
-        market_research_report = truncate_for_prompt(state["market_report"])
-        sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        news_report = truncate_for_prompt(state["news_report"])
-        fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
+        market_research_report = state["market_report"]
+        sentiment_report = state["sentiment_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -41,7 +39,6 @@ def create_bear_researcher(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
-        past_memory_str = truncate_response_for_prompt(past_memory_str)
 
         prompt = f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
 
@@ -82,7 +79,13 @@ After your normal argument, append an exact block using this template:
 
         argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Bear Analyst")
         argument = f"{localize_role_name('Bear Analyst')}: {argument_body}"
-        new_bear_snapshot = extract_feedback_snapshot(raw_content)
+        new_bear_snapshot_full = extract_feedback_snapshot(raw_content)
+
+        ticker = state.get("company_of_interest", "unknown")
+        trade_date = state.get("trade_date", "unknown")
+        snapshot_path = save_snapshot_file(new_bear_snapshot_full, "Bear Analyst", ticker, trade_date, round_index + 1)
+        new_bear_snapshot = make_display_snapshot(new_bear_snapshot_full, snapshot_path)
+
         new_debate_brief = build_debate_brief(
             {
                 "Bull Analyst": bull_snapshot,
@@ -96,8 +99,12 @@ After your normal argument, append an exact block using this template:
             "bear_history": bear_history + "\n" + argument,
             "bull_history": investment_debate_state.get("bull_history", ""),
             "current_response": argument,
+            "current_bear_response": argument,
+            "current_bull_response": investment_debate_state.get("current_bull_response", ""),
             "bull_snapshot": bull_snapshot,
             "bear_snapshot": new_bear_snapshot,
+            "bull_snapshot_path": investment_debate_state.get("bull_snapshot_path", ""),
+            "bear_snapshot_path": snapshot_path,
             "debate_brief": new_debate_brief,
             "latest_speaker": "Bear Analyst",
             "judge_decision": investment_debate_state.get("judge_decision", ""),

@@ -11,11 +11,11 @@ from tradingagents.agents.utils.agent_utils import (
     get_snapshot_writing_instruction,
     get_conservative_risk_instruction,
     localize_role_name,
+    make_display_snapshot,
     normalize_chinese_role_terms,
+    save_snapshot_file,
     strip_feedback_snapshot,
     strip_role_prefix,
-    truncate_for_prompt,
-    truncate_response_for_prompt,
 )
 
 
@@ -24,23 +24,19 @@ def create_conservative_debator(llm):
         risk_debate_state = state["risk_debate_state"]
         conservative_history = risk_debate_state.get("conservative_history", "")
         round_index = risk_debate_state.get("count", 0)
-        current_aggressive_response = truncate_response_for_prompt(
-            risk_debate_state.get("current_aggressive_response", "")
-        )
-        current_neutral_response = truncate_response_for_prompt(
-            risk_debate_state.get("current_neutral_response", "")
-        )
+        current_aggressive_response = risk_debate_state.get("current_aggressive_response", "")
+        current_neutral_response = risk_debate_state.get("current_neutral_response", "")
         aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
         conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
         neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
         debate_brief = risk_debate_state.get("debate_brief", "")
 
-        market_research_report = truncate_for_prompt(state["market_report"])
-        sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        news_report = truncate_for_prompt(state["news_report"])
-        fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
+        market_research_report = state["market_report"]
+        sentiment_report = state["sentiment_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
 
-        trader_decision = truncate_for_prompt(state["trader_investment_plan"])
+        trader_decision = state["trader_investment_plan"]
 
         prompt = f"""As the Conservative Risk Analyst, your primary objective is to protect assets, minimize volatility, and ensure steady, reliable growth. You prioritize stability, security, and risk mitigation, carefully assessing potential losses, economic downturns, and market volatility. When evaluating the trader's decision or plan, critically examine high-risk elements, pointing out where the decision may expose the firm to undue risk and where more cautious alternatives could secure long-term gains. Here is the trader's decision:
 
@@ -71,11 +67,16 @@ After your normal argument, append an exact block using this template:
             raw_content = normalize_chinese_role_terms(response.content)
             argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Conservative Analyst")
             argument = f"{localize_role_name('Conservative Analyst')}: {argument_body}"
-            new_conservative_snapshot = extract_feedback_snapshot(raw_content)
+            new_conservative_snapshot_full = extract_feedback_snapshot(raw_content)
+            ticker = state.get("company_of_interest", "unknown")
+            trade_date = state.get("trade_date", "unknown")
+            snapshot_path = save_snapshot_file(new_conservative_snapshot_full, "Conservative Analyst", ticker, trade_date, round_index + 1)
+            new_conservative_snapshot = make_display_snapshot(new_conservative_snapshot_full, snapshot_path)
         except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
             argument_body = f"本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
             argument = f"{localize_role_name('Conservative Analyst')}: {argument_body}"
             new_conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
+            snapshot_path = risk_debate_state.get("conservative_snapshot_path", "")
         new_debate_brief = build_debate_brief(
             {
                 "Aggressive Analyst": aggressive_snapshot,
@@ -91,16 +92,15 @@ After your normal argument, append an exact block using this template:
             "conservative_history": conservative_history + "\n" + argument,
             "neutral_history": risk_debate_state.get("neutral_history", ""),
             "latest_speaker": "Conservative",
-            "current_aggressive_response": risk_debate_state.get(
-                "current_aggressive_response", ""
-            ),
+            "current_aggressive_response": risk_debate_state.get("current_aggressive_response", ""),
             "current_conservative_response": argument,
-            "current_neutral_response": risk_debate_state.get(
-                "current_neutral_response", ""
-            ),
+            "current_neutral_response": risk_debate_state.get("current_neutral_response", ""),
             "aggressive_snapshot": aggressive_snapshot,
             "conservative_snapshot": new_conservative_snapshot,
             "neutral_snapshot": neutral_snapshot,
+            "aggressive_snapshot_path": risk_debate_state.get("aggressive_snapshot_path", ""),
+            "conservative_snapshot_path": snapshot_path,
+            "neutral_snapshot_path": risk_debate_state.get("neutral_snapshot_path", ""),
             "debate_brief": new_debate_brief,
             "judge_decision": risk_debate_state.get("judge_decision", ""),
             "count": risk_debate_state["count"] + 1,

@@ -19,6 +19,10 @@ class InvestDebateState(TypedDict):
     current_response: Annotated[str, "Latest response"]  # Last response
     bull_snapshot: Annotated[str, "Latest bull feedback snapshot"]
     bear_snapshot: Annotated[str, "Latest bear feedback snapshot"]
+    bull_snapshot_path: Annotated[str, "Path to full bull snapshot file"]
+    bear_snapshot_path: Annotated[str, "Path to full bear snapshot file"]
+    current_bull_response: Annotated[str, "Last full argument by bull analyst"]
+    current_bear_response: Annotated[str, "Last full argument by bear analyst"]
     debate_brief: Annotated[str, "Compact latest debate brief"]
     latest_speaker: Annotated[str, "Speaker that updated the brief last"]
     judge_decision: Annotated[str, "Final judge decision"]  # Last response
@@ -51,6 +55,9 @@ class RiskDebateState(TypedDict):
     aggressive_snapshot: Annotated[str, "Latest aggressive feedback snapshot"]
     conservative_snapshot: Annotated[str, "Latest conservative feedback snapshot"]
     neutral_snapshot: Annotated[str, "Latest neutral feedback snapshot"]
+    aggressive_snapshot_path: Annotated[str, "Path to full aggressive snapshot file"]
+    conservative_snapshot_path: Annotated[str, "Path to full conservative snapshot file"]
+    neutral_snapshot_path: Annotated[str, "Path to full neutral snapshot file"]
     judge_decision: Annotated[str, "Judge's decision"]
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
 
