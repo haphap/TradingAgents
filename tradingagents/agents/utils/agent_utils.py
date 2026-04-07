@@ -586,15 +586,29 @@ def extract_feedback_snapshot(text: str) -> str:
 
 
 def strip_role_prefix(text: str, role: str) -> str:
-    """Remove a leading self-labeling role prefix that the LLM may prepend.
+    """Remove self-labeling role prefixes that the LLM may inject.
 
-    When the LLM starts its response with e.g. "多头分析师：" or "Bull Analyst: "
-    before the actual argument body, this strips it so that the caller's explicit
-    ``{role}: {body}`` prefix doesn't produce a duplicate.
+    Handles three patterns:
+    1. Leading markdown heading containing the role name, e.g. '# 多头分析师辩论：...'
+    2. Leading 'role: ' / 'role：' prefix at the start of the body
+    3. Mid-text paragraphs that open with 'role：' / 'role: ' (inline self-labeling)
     """
     if not text:
         return text
+
+    import re
+
     candidates = {localize_role_name(role), role}
+
+    # 1. Strip leading markdown heading line(s) that contain the role name
+    lines = text.split("\n")
+    while lines and lines[0].lstrip().startswith("#") and any(
+        name in lines[0] for name in candidates
+    ):
+        lines.pop(0)
+    text = "\n".join(lines).lstrip()
+
+    # 2. Strip leading 'role: ' / 'role：' prefix
     for name in candidates:
         for sep in ("：", ": ", ":", "- "):
             prefix = name + sep
@@ -604,7 +618,12 @@ def strip_role_prefix(text: str, role: str) -> str:
         else:
             continue
         break
-    return text
+
+    # 3. Remove mid-text self-labeling: 'role：' or 'role: ' at the start of any line
+    pattern = "|".join(re.escape(name) for name in candidates)
+    text = re.sub(r"(?m)^(?:" + pattern + r")[：:] *", "", text)
+
+    return text.strip()
 
 
 def strip_feedback_snapshot(text: str) -> str:
