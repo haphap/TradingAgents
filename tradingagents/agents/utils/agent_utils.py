@@ -160,9 +160,8 @@ def get_localized_rating_scale() -> str:
 def get_localized_final_proposal_instruction() -> str:
     if _is_chinese_output():
         return (
-            "End with a firm decision and present the user-facing conclusion as "
-            "'最终交易建议: **买入/持有/卖出**'. For machine compatibility, you may optionally append a separate final line "
-            "using the internal token 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' only when needed."
+            "以明确的交易建议结束，最后一行必须使用格式："
+            "'最终交易建议: **买入/增持/持有/减持/卖出**'。"
         )
     return (
         "End with a firm decision and always conclude your response with "
@@ -218,14 +217,17 @@ def get_aggressive_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「立场」字段是否与你所强调的高回报机会一致？"
-            "如果你的论点支持激进入场，快照中的立场就应反映这一判断，不应出现论点强调上行空间、"
-            "立场却极度保守或建议退出的自相矛盾情形。"
+            "先自我审查：你「立场」字段是否与你所强调的高回报机会一致？"
+            "如果论点支持激进入场，立场就应反映这一判断，不允许论点看多、立场却极度保守的矛盾情形。"
+            "最后一行必须输出：'最终交易建议: **买入**'或'最终交易建议: **增持**'"
+            "（仅在风险证据确实充分时可用'最终交易建议: **持有**'）。"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "align with the high-reward case you've argued? If your argument supports aggressive entry, your snapshot "
-        "stance should reflect that — do not argue for upside potential while simultaneously signaling extreme caution."
+        "stance should reflect that. "
+        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**' "
+        "(use 'FINAL TRANSACTION PROPOSAL: **HOLD**' only if risk evidence clearly warrants caution)."
     )
 
 
@@ -235,15 +237,17 @@ def get_conservative_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「立场」字段是否与你所强调的风险和资产保护一致？"
-            "如果你的论点强调下行风险，快照中的立场就应反映这一判断，不应出现论点满是风险警告、"
-            "立场却比激进分析师还乐观的自相矛盾情形。"
+            "先自我审查：你「立场」字段是否与你所强调的风险和资产保护一致？"
+            "如果论点强调下行风险，立场就应反映这一判断，不允许论点满是风险警告、立场却比激进分析师还乐观的矛盾情形。"
+            "最后一行必须输出：'最终交易建议: **持有**'或'最终交易建议: **减持**'"
+            "（仅在风险极端严峻时可用'最终交易建议: **卖出**'）。"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
         "align with the risk-protection case you've argued? If your argument emphasizes downside risks, your "
-        "snapshot stance should reflect caution — do not argue for capital preservation while simultaneously "
-        "signaling a more bullish stance than the Aggressive Analyst."
+        "snapshot stance should reflect caution — do not signal a more bullish stance than the Aggressive Analyst. "
+        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **HOLD**' or 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' "
+        "(use 'FINAL TRANSACTION PROPOSAL: **SELL**' only when risks are extreme)."
     )
 
 
@@ -253,24 +257,26 @@ def get_neutral_risk_instruction() -> str:
     """
     if _is_chinese_output():
         return (
-            "在附上快照之前，先自我审查：你「立场」字段是否真实反映了平衡视角？"
-            "如果你的论点同时承认上行机会和下行风险，快照中的立场就应体现这种平衡，"
-            "不应偏向任何一方的极端，与你所展示的中性分析自相矛盾。"
+            "先自我审查：你「立场」字段是否真实反映了平衡视角？"
+            "如果论点同时承认上行机会和下行风险，立场就应体现平衡，不应偏向任何极端与中性分析自相矛盾。"
+            "最后一行必须输出：'最终交易建议: **持有**'"
+            "（仅在论点明确偏向某一方时可用'最终交易建议: **买入**'或'最终交易建议: **减持**'）。"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "genuinely reflect the balanced view you've argued? If your argument acknowledges both upside and downside, "
-        "your snapshot stance should reflect that balance — do not drift to either extreme in a way that contradicts "
-        "the moderate, evidence-based analysis you've presented."
+        "genuinely reflect the balanced view you've argued? "
+        "Conclude with a final line: 'FINAL TRANSACTION PROPOSAL: **HOLD**' "
+        "(use 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' "
+        "only when your arguments clearly lean one way)."
     )
 
 
 
+def get_collaboration_stop_instruction() -> str:
     if _is_chinese_output():
         return (
-            " If you or another assistant has already reached a final deliverable, prefer the user-facing line "
-            "'最终交易建议: **买入/持有/卖出**'. Only when a machine-readable stop signal is necessary, append an extra final line "
-            "with the internal token 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**'."
+            " 如果你或其他助手已经给出了最终结论，请在响应中包含："
+            "'最终交易建议: **买入/增持/持有/减持/卖出**'，团队将以此为停止信号。"
         )
     return (
         " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
