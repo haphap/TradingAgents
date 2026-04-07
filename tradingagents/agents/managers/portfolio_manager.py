@@ -23,7 +23,8 @@ def create_portfolio_manager(llm, memory):
         news_report = truncate_for_prompt(state["news_report"])
         fundamentals_report = truncate_for_prompt(state["fundamentals_report"])
         sentiment_report = truncate_for_prompt(state["sentiment_report"])
-        trader_plan = truncate_for_prompt(state["investment_plan"])
+        research_plan = truncate_for_prompt(state["investment_plan"])
+        trader_plan = truncate_for_prompt(state["trader_investment_plan"])
         aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
         conservative_snapshot = risk_debate_state.get("conservative_snapshot", "")
         neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
@@ -45,7 +46,8 @@ def create_portfolio_manager(llm, memory):
 {get_localized_rating_scale()}
 
 **Context:**
-- Trader's proposed plan: **{trader_plan}**
+- Research Manager's investment plan: **{research_plan}**
+- Trader's transaction proposal: **{trader_plan}**
 - Lessons from past decisions: **{past_memory_str}**
 
 **Required Output Structure:**
