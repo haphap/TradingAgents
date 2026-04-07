@@ -574,6 +574,28 @@ def extract_feedback_snapshot(text: str) -> str:
     return _infer_feedback_snapshot_from_body(text)
 
 
+def strip_role_prefix(text: str, role: str) -> str:
+    """Remove a leading self-labeling role prefix that the LLM may prepend.
+
+    When the LLM starts its response with e.g. "多头分析师：" or "Bull Analyst: "
+    before the actual argument body, this strips it so that the caller's explicit
+    ``{role}: {body}`` prefix doesn't produce a duplicate.
+    """
+    if not text:
+        return text
+    candidates = {localize_role_name(role), role}
+    for name in candidates:
+        for sep in ("：", ": ", ":", "- "):
+            prefix = name + sep
+            if text.startswith(prefix):
+                text = text[len(prefix):].lstrip()
+                break
+        else:
+            continue
+        break
+    return text
+
+
 def strip_feedback_snapshot(text: str) -> str:
     """Remove the feedback snapshot block from the visible argument body."""
     if not text:

@@ -11,6 +11,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_role_name,
     normalize_chinese_role_terms,
     strip_feedback_snapshot,
+    strip_role_prefix,
     truncate_for_prompt,
 )
 
@@ -66,7 +67,7 @@ After your normal argument, append an exact block using this template:
 
         response = llm.invoke(prompt)
         raw_content = normalize_chinese_role_terms(response.content)
-        argument_body = strip_feedback_snapshot(raw_content)
+        argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Bear Analyst")
         argument = f"{localize_role_name('Bear Analyst')}: {argument_body}"
         new_bear_snapshot = extract_feedback_snapshot(raw_content)
         new_debate_brief = build_debate_brief(
