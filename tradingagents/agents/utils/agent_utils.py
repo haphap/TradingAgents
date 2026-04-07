@@ -213,79 +213,71 @@ def get_bull_proposal_instruction() -> str:
 
 def get_aggressive_risk_instruction() -> str:
     """Consistency instruction for the Aggressive Risk Analyst.
-    The stance must align with the high-reward arguments made.
+    Natural tendency: bullish/aggressive, but any action is allowed if evidence warrants.
     The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
-            "先自我审查：你「立场」字段是否与你所强调的高回报机会一致？"
-            "如果论点支持激进入场，立场就应反映这一判断，不允许论点看多、立场却极度保守的矛盾情形。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
-            "并可加修饰词体现节奏与幅度，例如：\n"
-            "激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 持仓不动（仅在风险明确时使用）。\n"
-            "示例：风险建议: **激进加仓**  或  风险建议: **分批建仓，目标满仓**"
+            "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
+            "作为激进分析师，你的自然倾向是寻找高回报机会，但若本轮证据确实指向风险，"
+            "也可以选择逐步减仓或立即止损——重要的是结论与论点保持自洽，而非机械地执行激进立场。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "align with the high-reward case you've argued? "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
-        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
-        "Options: Aggressively Accumulate / Decisively Buy / Build Position in Batches / "
-        "Go All-In / Hold Firm (only if risk evidence clearly warrants). "
-        "Example: RISK RECOMMENDATION: **Aggressively Accumulate**  or  "
-        "RISK RECOMMENDATION: **Build Position in Batches, Target Full Position**"
+        "match what your arguments actually argued this round? "
+        "As the Aggressive Analyst your natural lean is high-reward entry, but if evidence "
+        "this round clearly points to risk, gradual reduction or a stop-loss is valid — "
+        "what matters is that your conclusion is self-consistent, not mechanically aggressive. "
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
     )
-
 
 def get_conservative_risk_instruction() -> str:
     """Consistency instruction for the Conservative Risk Analyst.
-    The stance must align with the risk-protection arguments made.
+    Natural tendency: cautious/defensive, but any action is allowed if evidence warrants.
     The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
-            "先自我审查：你「立场」字段是否与你所强调的风险和资产保护一致？"
-            "如果论点强调下行风险，立场就应反映这一判断，不允许论点满是风险警告、立场却比激进分析师还乐观的矛盾情形。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
-            "并可加修饰词体现节奏与幅度，例如：\n"
-            "立即止损 / 坚决减仓 / 逐步减仓 / 分批卖出 / 谨慎持有（仅在风险可控时使用）。\n"
-            "示例：风险建议: **逐步减仓，控制回撤**  或  风险建议: **立即止损，清空仓位**"
+            "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
+            "作为保守分析师，你的自然倾向是保护资产、控制回撤，但若本轮证据确实支持机会，"
+            "也可以选择维持仓位甚至小幅加仓——重要的是结论与论点保持自洽，而非机械地执行保守立场。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "align with the risk-protection case you've argued? "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
-        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
-        "Options: Immediate Stop-Loss / Decisively Reduce / Gradually Reduce / "
-        "Sell in Batches / Hold with Caution (only if risks are manageable). "
-        "Example: RISK RECOMMENDATION: **Gradually Reduce, Limit Drawdown**  or  "
-        "RISK RECOMMENDATION: **Immediate Stop-Loss, Exit Position**"
+        "match what your arguments actually argued this round? "
+        "As the Conservative Analyst your natural lean is capital protection, but if evidence "
+        "this round genuinely supports a position, holding or a small increase is valid — "
+        "what matters is that your conclusion is self-consistent, not mechanically cautious. "
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
     )
-
 
 def get_neutral_risk_instruction() -> str:
     """Consistency instruction for the Neutral Risk Analyst.
-    The stance must reflect a genuinely balanced view, not drift to either extreme.
+    Natural tendency: balanced, but any action is allowed if evidence clearly leans one way.
     The conclusion uses the dedicated '风险建议' format with pace/scale vocabulary.
     """
     if _is_chinese_output():
         return (
-            "先自我审查：你「立场」字段是否真实反映了平衡视角？"
-            "如果论点同时承认上行机会和下行风险，立场就应体现平衡，不应偏向任何极端与中性分析自相矛盾。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'，从以下选项中选最符合论点的一个，"
-            "并可加修饰词体现节奏与幅度，例如：\n"
-            "维持现仓 / 谨慎观望 / 小幅加仓 / 小幅减仓 / 分批调整 / 设置止损后持有。\n"
-            "示例：风险建议: **维持现仓，密切观察关键支撑位**  或  风险建议: **小幅减仓，等待企稳信号**"
+            "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
+            "作为中性分析师，你的自然倾向是平衡两方观点，但若本轮证据明确偏向某一侧，"
+            "也可以选择激进加仓或坚决减仓——重要的是结论与论点保持自洽，而非机械地居中立场。"
+            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
-        "genuinely reflect the balanced view you've argued? "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**', "
-        "choosing the option that best fits your argument and adding pace/scale modifiers as needed. "
-        "Options: Maintain Position / Cautiously Observe / Slightly Increase / "
-        "Slightly Reduce / Adjust in Batches / Hold with Stop-Loss Set. "
-        "Example: RISK RECOMMENDATION: **Maintain Position, Monitor Key Support**  or  "
-        "RISK RECOMMENDATION: **Slightly Reduce, Wait for Stabilization Signal**"
+        "match what your arguments actually argued this round? "
+        "As the Neutral Analyst your natural lean is balance, but if evidence "
+        "this round clearly favors one side, aggressive accumulation or decisive reduction is valid — "
+        "what matters is that your conclusion is self-consistent, not mechanically neutral. "
+        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
     )
 
 
