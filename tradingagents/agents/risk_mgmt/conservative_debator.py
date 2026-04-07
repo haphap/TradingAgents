@@ -6,6 +6,7 @@ from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
     get_language_instruction,
+    get_no_greeting_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
     get_conservative_risk_instruction,
@@ -63,7 +64,7 @@ Engage by questioning their optimism and emphasizing the potential downsides the
 {get_conservative_risk_instruction()}
 After your normal argument, append an exact block using this template:
 {get_snapshot_template(round_index)}
-{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}"""
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}{get_no_greeting_instruction()}"""
 
         try:
             response = llm.invoke(prompt)

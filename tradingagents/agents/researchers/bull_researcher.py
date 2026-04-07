@@ -7,6 +7,7 @@ from tradingagents.agents.utils.agent_utils import (
     extract_feedback_snapshot,
     get_bull_proposal_instruction,
     get_language_instruction,
+    get_no_greeting_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
     localize_role_name,
@@ -66,8 +67,7 @@ When writing in Chinese, use the exact role names "{localize_role_name('Bull Ana
 Your main argument body must be written entirely in Chinese. {get_bull_proposal_instruction()}
 After your normal argument, append an exact block using this template:
 {get_snapshot_template(round_index)}
-{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}
-"""
+{get_snapshot_writing_instruction(round_index)}{get_language_instruction()}{get_no_greeting_instruction()}"""
 
         try:
             response = llm.invoke(prompt)

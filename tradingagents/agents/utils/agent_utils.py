@@ -35,6 +35,19 @@ def get_language_instruction() -> str:
     return f" Write your entire response in {lang}."
 
 
+def get_no_greeting_instruction() -> str:
+    """Return a prompt instruction forbidding greeting openers."""
+    if _is_chinese_output():
+        return (
+            " 直接进入正文，严禁以问候语开头（如「你好，空头分析师」、「大家好」等），"
+            "也不要在正文中重复自己的角色名称。"
+        )
+    return (
+        " Start directly with your argument. Do not open with greetings or salutations "
+        "(e.g. 'Hello, Bear Analyst'). Do not repeat your own role name in the body."
+    )
+
+
 def get_output_language() -> str:
     from tradingagents.dataflows.config import get_config
 
@@ -131,6 +144,23 @@ def localize_role_name(role: str) -> str:
         "Judge": "裁决者",
     }
     return mapping.get(role, role) if _is_chinese_output() else role
+
+
+# Reverse mapping: Chinese → English (for always-include-both logic)
+_ROLE_BOTH_NAMES: dict[str, set[str]] = {
+    en: {en, zh}
+    for en, zh in {
+        "Bull Analyst": "多头分析师",
+        "Bear Analyst": "空头分析师",
+        "Aggressive Analyst": "激进分析师",
+        "Conservative Analyst": "保守分析师",
+        "Neutral Analyst": "中性分析师",
+        "Portfolio Manager": "投资组合经理",
+        "Research Manager": "研究经理",
+        "Trader": "交易员",
+        "Judge": "裁决者",
+    }.items()
+}
 
 
 def normalize_chinese_role_terms(text: str) -> str:
@@ -621,17 +651,18 @@ def extract_feedback_snapshot(text: str) -> str:
 def strip_role_prefix(text: str, role: str) -> str:
     """Remove self-labeling role prefixes that the LLM may inject.
 
-    Handles three patterns:
+    Handles four patterns:
     1. Leading markdown heading containing the role name, e.g. '# 多头分析师辩论：...'
     2. Leading 'role: ' / 'role：' prefix at the start of the body
     3. Mid-text paragraphs that open with 'role：' / 'role: ' (inline self-labeling)
+    4. Leading greeting sentences directed at another role, e.g. '你好，空头分析师。'
     """
     if not text:
         return text
 
     import re
 
-    candidates = {localize_role_name(role), role}
+    candidates = _ROLE_BOTH_NAMES.get(role, {role, localize_role_name(role)})
 
     # 1. Strip leading markdown heading line(s) that contain the role name
     lines = text.split("\n")
@@ -655,6 +686,17 @@ def strip_role_prefix(text: str, role: str) -> str:
     # 3. Remove mid-text self-labeling: 'role：' or 'role: ' at the start of any line
     pattern = "|".join(re.escape(name) for name in candidates)
     text = re.sub(r"(?m)^(?:" + pattern + r")[：:] *", "", text)
+
+    # 4. Strip leading greeting sentences (e.g. '你好，空头分析师。' / '空头分析师，你好。')
+    # Match one or two greeting sentences at the very start (up to first period/exclamation).
+    _GREETING_RE = re.compile(
+        r"^(?:"
+        r"(?:你好|大家好|各位好|亲爱的)[，、,！!]?[^\n。！!?？]{0,30}[。！!?？\n]?"
+        r"|[^\n，。！!?？]{0,20}[，,][你妳]好[。！!?？\n]?"
+        r")\s*",
+        re.UNICODE,
+    )
+    text = _GREETING_RE.sub("", text).lstrip()
 
     return text.strip()
 
