@@ -101,9 +101,9 @@ Append a feedback block in this exact format:
         judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {
-                "Aggressive Analyst": aggressive_snapshot,
-                "Conservative Analyst": conservative_snapshot,
-                "Neutral Analyst": neutral_snapshot,
+                "Aggressive Analyst": aggressive_snapshot_display,
+                "Conservative Analyst": conservative_snapshot_display,
+                "Neutral Analyst": neutral_snapshot_display,
                 "Portfolio Manager": judge_snapshot,
             },
             latest_speaker="Portfolio Manager",
