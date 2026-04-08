@@ -8,8 +8,6 @@ Binary format (per feature file):
   - Bytes 0-3: float32 representing the start calendar index
   - Bytes 4+:  float32 values, one per trading day from that calendar index
 """
-from __future__ import annotations
-
 import os
 import struct
 from datetime import datetime, timedelta
@@ -49,13 +47,20 @@ def _find_qlib_data_path() -> Optional[Path]:
     return None
 
 
-@lru_cache(maxsize=1)
+_cached_data_path: Optional[Path] = None
+
+
 def _get_data_path() -> Path:
+    """Return qlib data path, caching only successful lookups."""
+    global _cached_data_path
+    if _cached_data_path is not None:
+        return _cached_data_path
     path = _find_qlib_data_path()
     if path is None:
         raise DataVendorUnavailable(
             "Qlib CN data not found. Set QLIB_CN_DATA_PATH or place data at ~/.qlib/qlib_data/cn_data"
         )
+    _cached_data_path = path
     return path
 
 
