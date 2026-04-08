@@ -857,6 +857,7 @@ def synthesize_side_report(llm, role: str, full_history: str, snapshot: str) -> 
         return truncate_for_prompt(full_history, default_limit=4000)
 
 
+def _resolve_company_name(ticker: str) -> str:
     """Best-effort lookup of the company name for a ticker.
 
     Tries Tushare first (accurate for Chinese A-shares / HK stocks), then
