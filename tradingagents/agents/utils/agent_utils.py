@@ -669,9 +669,9 @@ def save_snapshot_file(
     round_num: int,
 ) -> str:
     """Save the full snapshot text to a dedicated file and return its path."""
-    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.dataflows.config import get_config
 
-    results_dir = DEFAULT_CONFIG.get("results_dir", "./results")
+    results_dir = get_config().get("results_dir", "./results")
     safe_ticker = ticker.replace("/", "_").replace("\\", "_")
     snap_dir = os.path.join(results_dir, safe_ticker, trade_date, "snapshots")
     os.makedirs(snap_dir, exist_ok=True)

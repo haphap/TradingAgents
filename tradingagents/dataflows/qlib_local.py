@@ -152,6 +152,10 @@ def _to_qlib_instrument(symbol: str) -> str:
             f"Ticker '{symbol}' (exchange={exch}) is not a CN/HK stock; qlib local data only supports {supported}."
         )
 
+    # HK stock codes are 5 digits (e.g., 0700.HK → hk00700)
+    if exch == "HK":
+        code = code.zfill(5)
+
     return f"{exch.lower()}{code}"
 
 

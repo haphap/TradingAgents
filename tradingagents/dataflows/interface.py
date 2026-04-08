@@ -163,7 +163,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     ticker = args[0] if args else kwargs.get("ticker") or kwargs.get("symbol") or ""
     if _is_chinese_ticker(ticker):
         # Ensure qlib is first if available for this method, then tushare
-        for preferred in reversed(["tushare", "qlib"]):
+        for preferred in reversed(["qlib", "tushare"]):
             if preferred in VENDOR_METHODS[method] and preferred not in primary_vendors:
                 primary_vendors.insert(0, preferred)
             elif preferred in VENDOR_METHODS[method] and primary_vendors[0] != preferred:
