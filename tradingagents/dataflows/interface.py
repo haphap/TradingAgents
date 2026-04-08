@@ -22,6 +22,10 @@ from .tushare import (
     get_income_statement as get_tushare_income_statement,
     get_insider_transactions as get_tushare_insider_transactions,
 )
+from .qlib_local import (
+    get_stock as get_qlib_stock,
+    get_indicator as get_qlib_indicator,
+)
 from .exceptions import DataVendorUnavailable
 
 # Configuration and routing logic
@@ -61,6 +65,7 @@ TOOLS_CATEGORIES = {
 }
 
 VENDOR_LIST = [
+    "qlib",
     "yfinance",
     "tushare",
     "brave",
@@ -71,11 +76,13 @@ VENDOR_LIST = [
 VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
+        "qlib": get_qlib_stock,
         "tushare": get_tushare_stock,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
+        "qlib": get_qlib_indicator,
         "tushare": get_tushare_indicator,
         "yfinance": get_stock_stats_indicators_window,
     },
@@ -154,14 +161,16 @@ def route_to_vendor(method: str, *args, **kwargs):
     if method not in VENDOR_METHODS:
         raise ValueError(f"Method '{method}' not supported")
 
-    # For Chinese market tickers always try tushare first.
+    # For Chinese market tickers, prefer qlib (local) then tushare.
     ticker = args[0] if args else kwargs.get("ticker") or kwargs.get("symbol") or ""
-    if _is_chinese_ticker(ticker) and "tushare" in VENDOR_METHODS[method]:
-        if "tushare" not in primary_vendors:
-            primary_vendors.insert(0, "tushare")
-        elif primary_vendors[0] != "tushare":
-            primary_vendors.remove("tushare")
-            primary_vendors.insert(0, "tushare")
+    if _is_chinese_ticker(ticker):
+        # Ensure qlib is first if available for this method, then tushare
+        for preferred in reversed(["tushare", "qlib"]):
+            if preferred in VENDOR_METHODS[method] and preferred not in primary_vendors:
+                primary_vendors.insert(0, preferred)
+            elif preferred in VENDOR_METHODS[method] and primary_vendors[0] != preferred:
+                primary_vendors.remove(preferred)
+                primary_vendors.insert(0, preferred)
 
     # Build fallback chain: primary vendors first, then remaining available vendors
     all_available_vendors = list(VENDOR_METHODS[method].keys())

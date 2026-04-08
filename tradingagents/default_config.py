@@ -29,15 +29,15 @@ DEFAULT_CONFIG = {
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
-        "core_stock_apis": "tushare,yfinance",       # Options: tushare, yfinance
-        "technical_indicators": "tushare,yfinance",  # Options: tushare, yfinance
-        "fundamental_data": "tushare,yfinance",      # Options: tushare, yfinance
-        "news_data": "opencli,brave,yfinance",       # Options: opencli, brave, yfinance
+        "core_stock_apis": "qlib,tushare,yfinance",       # Options: qlib, tushare, yfinance
+        "technical_indicators": "qlib,tushare,yfinance",  # Options: qlib, tushare, yfinance
+        "fundamental_data": "tushare,yfinance",           # Options: tushare, yfinance
+        "news_data": "opencli,brave,yfinance",            # Options: opencli, brave, yfinance
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {
-        "get_stock_data": "tushare",
-        "get_indicators": "tushare",
+        "get_stock_data": "qlib,tushare",
+        "get_indicators": "qlib,tushare",
         "get_fundamentals": "tushare",
         "get_balance_sheet": "tushare",
         "get_cashflow": "tushare",
