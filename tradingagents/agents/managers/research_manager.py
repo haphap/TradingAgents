@@ -84,8 +84,8 @@ Here is the latest debate context:
         judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {
-                "Bull Analyst": bull_snapshot,
-                "Bear Analyst": bear_snapshot,
+                "Bull Analyst": bull_snapshot_display,
+                "Bear Analyst": bear_snapshot_display,
                 "Research Manager": judge_snapshot,
             },
             latest_speaker="Research Manager",
