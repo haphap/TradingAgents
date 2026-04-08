@@ -58,7 +58,7 @@ Social media sentiment report: {sentiment_report}
 Latest world affairs news: {news_report}
 Company fundamentals report: {fundamentals_report}
 Rolling debate brief: {debate_brief}
-Your latest feedback snapshot: {bear_snapshot}
+Your PREVIOUS round snapshot (do NOT repeat its content in new snapshot): {bear_snapshot}
 Latest bull feedback snapshot: {bull_snapshot}
 Your complete debate history: {bear_history}
 Bull's complete debate history: {bull_history}

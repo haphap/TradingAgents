@@ -50,7 +50,7 @@ Social Media Sentiment Report: {sentiment_report}
 Latest World Affairs Report: {news_report}
 Company Fundamentals Report: {fundamentals_report}
 Rolling risk debate brief: {debate_brief}
-Your latest feedback snapshot: {neutral_snapshot}
+Your PREVIOUS round snapshot (do NOT repeat its content in new snapshot): {neutral_snapshot}
 Latest aggressive feedback snapshot: {aggressive_snapshot}
 Latest conservative feedback snapshot: {conservative_snapshot}
 Your complete debate history: {neutral_history}
