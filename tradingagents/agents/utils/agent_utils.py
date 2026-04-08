@@ -809,7 +809,54 @@ def build_debate_brief(snapshots: dict[str, str], latest_speaker: str = "") -> s
     return "\n\n".join(sections).strip()
 
 
-def _resolve_company_name(ticker: str) -> str:
+def synthesize_side_report(llm, role: str, full_history: str, snapshot: str) -> str:
+    """Use the LLM to distill a debater's full multi-round history into a structured
+    comprehensive position report for the manager to read.
+
+    This replaces the raw 'last round only' approach with a coherent synthesis that
+    captures argument evolution, strongest evidence, and final stance across all rounds.
+    """
+    if not full_history:
+        return snapshot or ""
+
+    role_label = localize_role_name(role) if _is_chinese_output() else role
+    history_input = truncate_for_prompt(full_history, default_limit=12000)
+
+    if _is_chinese_output():
+        prompt = (
+            f"以下是【{role_label}】在多轮辩论中的完整发言记录：\n\n"
+            f"{history_input}\n\n"
+            f"最新快照摘要（供参考）：\n{snapshot}\n\n"
+            "请基于以上全部内容，生成一份结构化的【综合立场报告】，涵盖：\n"
+            "1. **最终立场**：明确的评级及核心判断（1-2句）\n"
+            "2. **核心论点**：跨轮次最有力的3-5个论点，附关键数据或事实支撑\n"
+            "3. **主要反驳**：对对手观点最有效的反驳（2-3条）\n"
+            "4. **立场演变**：若立场在辩论过程中有调整，简述原因\n"
+            "5. **核心风险/机会**：一句话点明最关键的尾部风险或上行机会\n"
+            "报告应客观、具体、有数据支撑，避免重复，控制在500字以内。"
+        )
+    else:
+        prompt = (
+            f"Below is the complete multi-round debate record from [{role_label}]:\n\n"
+            f"{history_input}\n\n"
+            f"Latest snapshot (for reference):\n{snapshot}\n\n"
+            "Based on the full record above, produce a structured **Comprehensive Position Report** covering:\n"
+            "1. **Final Stance**: Clear rating and core thesis (1-2 sentences)\n"
+            "2. **Key Arguments**: The 3-5 strongest arguments across all rounds, with data/evidence\n"
+            "3. **Main Rebuttals**: Most effective counter-arguments to the opponent (2-3 points)\n"
+            "4. **Stance Evolution**: If the position shifted during debate, briefly explain why\n"
+            "5. **Key Risk/Opportunity**: One sentence on the most critical tail risk or upside\n"
+            "Be concrete, data-anchored, non-repetitive. Max 400 words."
+        )
+
+    try:
+        response = llm.invoke(prompt)
+        return response.content.strip()
+    except Exception:
+        # Fall back to truncated raw history if synthesis fails
+        return truncate_for_prompt(full_history, default_limit=4000)
+
+
     """Best-effort lookup of the company name for a ticker.
 
     Tries Tushare first (accurate for Chinese A-shares / HK stocks), then

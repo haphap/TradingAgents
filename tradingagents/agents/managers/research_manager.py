@@ -13,6 +13,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_rating_term,
     localize_role_name,
     normalize_chinese_role_terms,
+    synthesize_side_report,
 )
 
 
@@ -33,9 +34,11 @@ def create_research_manager(llm, memory):
         bull_snapshot_full = load_snapshot_file(investment_debate_state.get("bull_snapshot_path", "")) or bull_snapshot_display
         bear_snapshot_full = load_snapshot_file(investment_debate_state.get("bear_snapshot_path", "")) or bear_snapshot_display
 
-        # Last-round full debate text from each side
-        bull_last = investment_debate_state.get("current_bull_response", "")
-        bear_last = investment_debate_state.get("current_bear_response", "")
+        # Synthesize each side's full debate history into a comprehensive position report
+        bull_history = investment_debate_state.get("bull_history", "")
+        bear_history = investment_debate_state.get("bear_history", "")
+        bull_report = synthesize_side_report(llm, "Bull Analyst", bull_history, bull_snapshot_full)
+        bear_report = synthesize_side_report(llm, "Bear Analyst", bear_history, bear_snapshot_full)
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -63,21 +66,14 @@ Here are your past reflections on mistakes:
 
 {instrument_context}
 
-Here is the latest debate context:
 {localize_label("Rolling debate brief:", "滚动辩论摘要:")}
 {debate_brief}
 
-{localize_label("Bull full snapshot:", f"{localize_role_name('Bull Analyst')} 完整快照:")}
-{bull_snapshot_full}
+{localize_label("Bull Analyst comprehensive position report (synthesized from all rounds):", f"{localize_role_name('Bull Analyst')} 综合立场报告（基于全轮次辩论）:")}
+{bull_report}
 
-{localize_label("Bear full snapshot:", f"{localize_role_name('Bear Analyst')} 完整快照:")}
-{bear_snapshot_full}
-
-{localize_label("Bull last-round full argument:", f"{localize_role_name('Bull Analyst')} 最后一轮全文:")}
-{bull_last}
-
-{localize_label("Bear last-round full argument:", f"{localize_role_name('Bear Analyst')} 最后一轮全文:")}
-{bear_last}{get_language_instruction()}
+{localize_label("Bear Analyst comprehensive position report (synthesized from all rounds):", f"{localize_role_name('Bear Analyst')} 综合立场报告（基于全轮次辩论）:")}
+{bear_report}{get_language_instruction()}
 """
         response = llm.invoke(prompt)
         normalized_content = normalize_chinese_role_terms(response.content)

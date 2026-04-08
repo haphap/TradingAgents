@@ -12,6 +12,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_rating_term,
     localize_role_name,
     normalize_chinese_role_terms,
+    synthesize_side_report,
 )
 
 
@@ -36,10 +37,10 @@ def create_portfolio_manager(llm, memory):
         conservative_snapshot_full = load_snapshot_file(risk_debate_state.get("conservative_snapshot_path", "")) or conservative_snapshot_display
         neutral_snapshot_full = load_snapshot_file(risk_debate_state.get("neutral_snapshot_path", "")) or neutral_snapshot_display
 
-        # Last-round full arguments from each debator
-        aggressive_last = risk_debate_state.get("current_aggressive_response", "")
-        conservative_last = risk_debate_state.get("current_conservative_response", "")
-        neutral_last = risk_debate_state.get("current_neutral_response", "")
+        # Synthesize each analyst's full debate history into a comprehensive position report
+        aggressive_report = synthesize_side_report(llm, "Aggressive Analyst", risk_debate_state.get("aggressive_history", ""), aggressive_snapshot_full)
+        conservative_report = synthesize_side_report(llm, "Conservative Analyst", risk_debate_state.get("conservative_history", ""), conservative_snapshot_full)
+        neutral_report = synthesize_side_report(llm, "Neutral Analyst", risk_debate_state.get("neutral_history", ""), neutral_snapshot_full)
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -71,23 +72,14 @@ def create_portfolio_manager(llm, memory):
 **{localize_label("Rolling Risk Debate Brief", "滚动风险辩论摘要")}:**
 {debate_brief}
 
-**{localize_label("Aggressive full snapshot", f"{localize_role_name('Aggressive Analyst')} 完整快照")}:**
-{aggressive_snapshot_full}
+**{localize_label("Aggressive Analyst comprehensive position report (synthesized from all rounds)", f"{localize_role_name('Aggressive Analyst')} 综合立场报告（基于全轮次辩论）")}:**
+{aggressive_report}
 
-**{localize_label("Conservative full snapshot", f"{localize_role_name('Conservative Analyst')} 完整快照")}:**
-{conservative_snapshot_full}
+**{localize_label("Conservative Analyst comprehensive position report (synthesized from all rounds)", f"{localize_role_name('Conservative Analyst')} 综合立场报告（基于全轮次辩论）")}:**
+{conservative_report}
 
-**{localize_label("Neutral full snapshot", f"{localize_role_name('Neutral Analyst')} 完整快照")}:**
-{neutral_snapshot_full}
-
-**{localize_label("Aggressive last-round full argument", f"{localize_role_name('Aggressive Analyst')} 最后一轮全文")}:**
-{aggressive_last}
-
-**{localize_label("Conservative last-round full argument", f"{localize_role_name('Conservative Analyst')} 最后一轮全文")}:**
-{conservative_last}
-
-**{localize_label("Neutral last-round full argument", f"{localize_role_name('Neutral Analyst')} 最后一轮全文")}:**
-{neutral_last}
+**{localize_label("Neutral Analyst comprehensive position report (synthesized from all rounds)", f"{localize_role_name('Neutral Analyst')} 综合立场报告（基于全轮次辩论）")}:**
+{neutral_report}
 
 ---
 
