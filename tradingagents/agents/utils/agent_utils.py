@@ -113,7 +113,9 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
             "反馈快照是对本轮核心内容的完整、详细记录，必须用自己的语言概括，禁止从正文中直接复制句子：\n"
             "「立场」：明确的评级及核心理由，如「维持减持——估值高企叠加技术破位，风险收益比失衡」；\n"
             "「本轮新增」：我方本轮补充的最关键新论点，需包含具体数据或逻辑链，如「铜价跌破8000美元防线，叠加需求端Q2拐点未至，下行空间超预期」；\n"
-            "「关键反驳」：针对对手核心观点的具体反驳，需点明对手的逻辑漏洞或忽视的数据，如「多头依赖政策利好，但忽视了62%净利润增速主要来自一次性铜价红利，而非可持续的产能扩张」；\n"
+            "「关键反驳」：必须先点明对手的具体主张，再给出反驳。格式为：「[对手角色]主张[XXX]，但[我方反驳+数据]」。"
+            "例如「多头分析师认为62%净利润增速印证成长性，但该增速实为铜价单边上行的周期红利而非可持续产能阿尔法，"
+            "一旦铜价回落至8000美元下方，利润弹性将快速反转，难以支撑当前30倍PE估值」；\n"
             "「待验证」：下轮需跟踪的具体指标、事件及触发条件，如「Q2铜价是否企稳8000美元上方；36元支撑位的成交量变化；美联储6月利率决议」。\n"
             "每项内容务必具体、有据可查，严禁开场白，严禁重复角色名，四项内容各不相同。"
         )
@@ -123,13 +125,14 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         "'Stance': clear rating with core rationale, e.g. 'Maintain Sell — valuation stretched at 30x PE with MACD death cross confirmed';\n"
         "'New this round': the most important NEW argument added this round with specific data, "
         "e.g. 'Copper below $8,000 support with Q2 demand inflection absent — downside exceeds expectations';\n"
-        "'Key rebuttal': specific counter to the opponent's main claim, naming their logical gap, "
-        "e.g. 'Bull ignores that 62% profit growth is a one-time copper price bonus, not sustainable capacity expansion';\n"
+        "'Key rebuttal': MUST first name the opponent's specific claim, then rebut it. "
+        "Format: '[Opponent role] claims [X], but [rebuttal + data].' "
+        "e.g. 'Bull Analyst claims 62% profit growth proves sustainable alpha, but this is purely a copper-price cycle bonus — "
+        "once copper falls below $8,000, earnings leverage reverses sharply, undermining the 30x PE thesis';\n"
         "'To verify': specific metrics, events, and trigger conditions to watch next round, "
         "e.g. 'Whether copper stabilizes above $8,000; volume at $36 support; Fed June rate decision'.\n"
         "Be concrete and data-driven. No greetings. No role names. No two fields alike."
     )
-
 
 def localize_label(english: str, chinese: str) -> str:
     return chinese if _is_chinese_output() else english
