@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import warnings
 
+from tradingagents.content_utils import extract_text_content
+
 
 def normalize_content(response):
     """Normalize LLM response content to a plain string.
@@ -11,14 +13,8 @@ def normalize_content(response):
     Downstream agents expect response.content to be a string. This extracts
     and joins the text blocks, discarding reasoning/metadata blocks.
     """
-    content = response.content
-    if isinstance(content, list):
-        texts = [
-            item.get("text", "") if isinstance(item, dict) and item.get("type") == "text"
-            else item if isinstance(item, str) else ""
-            for item in content
-        ]
-        response.content = "\n".join(t for t in texts if t)
+    if not isinstance(response.content, str):
+        response.content = extract_text_content(response.content)
     return response
 
 

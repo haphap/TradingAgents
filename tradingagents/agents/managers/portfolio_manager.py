@@ -14,6 +14,7 @@ from tradingagents.agents.utils.agent_utils import (
     normalize_chinese_role_terms,
     synthesize_side_report,
 )
+from tradingagents.content_utils import extract_text_content
 
 
 def create_portfolio_manager(llm, memory):
@@ -89,7 +90,9 @@ Append a feedback block in this exact format:
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""
 
         response = llm.invoke(prompt)
-        normalized_content = normalize_chinese_role_terms(response.content)
+        normalized_content = normalize_chinese_role_terms(
+            extract_text_content(response.content)
+        )
         judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {

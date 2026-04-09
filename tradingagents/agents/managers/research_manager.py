@@ -12,6 +12,7 @@ from tradingagents.agents.utils.agent_utils import (
     normalize_chinese_role_terms,
     synthesize_side_report,
 )
+from tradingagents.content_utils import extract_text_content
 
 
 def create_research_manager(llm, memory):
@@ -73,7 +74,9 @@ Here are your past reflections on mistakes:
 {bear_report}{get_language_instruction()}
 """
         response = llm.invoke(prompt)
-        normalized_content = normalize_chinese_role_terms(response.content)
+        normalized_content = normalize_chinese_role_terms(
+            extract_text_content(response.content)
+        )
         judge_snapshot = extract_feedback_snapshot(normalized_content)
         updated_brief = build_debate_brief(
             {

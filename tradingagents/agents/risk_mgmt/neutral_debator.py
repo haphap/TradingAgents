@@ -1,4 +1,5 @@
 import openai
+from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
@@ -66,7 +67,9 @@ After your normal argument, append an exact block using this template:
 
         try:
             response = llm.invoke(prompt)
-            raw_content = normalize_chinese_role_terms(response.content)
+            raw_content = normalize_chinese_role_terms(
+                extract_text_content(response.content)
+            )
             argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Neutral Analyst")
             argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
             new_neutral_snapshot_full = extract_feedback_snapshot(raw_content)

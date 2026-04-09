@@ -2,6 +2,8 @@ from langchain_core.messages import HumanMessage, RemoveMessage
 import os
 import re
 
+from tradingagents.content_utils import extract_text_content
+
 # Re-export data tools for backward compatibility (analysts import them from here)
 from tradingagents.agents.utils.core_stock_tools import get_stock_data
 from tradingagents.agents.utils.technical_indicators_tools import get_indicators
@@ -847,7 +849,7 @@ def synthesize_side_report(llm, role: str, full_history: str, snapshot: str) -> 
 
     try:
         response = llm.invoke(prompt)
-        return response.content.strip()
+        return extract_text_content(response.content)
     except Exception:
         # Fall back to truncated raw history if synthesis fails
         return truncate_for_prompt(full_history, default_limit=4000)

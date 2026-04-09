@@ -2,6 +2,7 @@ import functools
 import time
 import json
 
+from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     get_language_instruction,
@@ -47,7 +48,7 @@ def create_trader(llm, memory):
 
         return {
             "messages": [result],
-            "trader_investment_plan": result.content,
+            "trader_investment_plan": extract_text_content(result.content),
             "sender": name,
         }
 

@@ -1,4 +1,5 @@
 import openai
+from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
@@ -68,7 +69,9 @@ After your normal argument, append an exact block using this template:
 
         try:
             response = llm.invoke(prompt)
-            raw_content = normalize_chinese_role_terms(response.content)
+            raw_content = normalize_chinese_role_terms(
+                extract_text_content(response.content)
+            )
         except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
             fallback = (
                 f"{localize_role_name('Bull Analyst')}：本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"

@@ -8,6 +8,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_stock_data,
 )
+from tradingagents.tool_report_utils import run_tool_report_chain
 from tradingagents.dataflows.config import get_config
 
 
@@ -52,7 +53,7 @@ Volume-Based Indicators:
             + get_language_instruction()
         )
 
-        prompt = ChatPromptTemplate.from_messages(
+        prompt_template = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
@@ -70,19 +71,16 @@ Volume-Based Indicators:
             ]
         )
 
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(instrument_context=instrument_context)
-
-        chain = prompt | llm.bind_tools(tools)
-
-        result = chain.invoke(state["messages"])
-
-        report = ""
-
-        if len(result.tool_calls) == 0:
-            report = result.content
+        result, report = run_tool_report_chain(
+            prompt_template,
+            llm,
+            tools,
+            state["messages"],
+            system_message=system_message,
+            tool_names=", ".join([tool.name for tool in tools]),
+            current_date=current_date,
+            instrument_context=instrument_context,
+        )
 
         return {
             "messages": [result],
