@@ -1,6 +1,6 @@
 import unittest
 
-from tradingagents.tool_report_utils import run_tool_report_chain
+from tradingagents.tool_report_utils import run_tool_report_chain, _is_tool_call_text
 
 
 class _FakeResponse:
@@ -70,6 +70,36 @@ class ToolReportUtilsTests(unittest.TestCase):
 
         self.assertEqual(report, "Final report")
         self.assertEqual(result.content[0]["text"], "Final report")
+
+    def test_xml_tool_call_in_content_triggers_fallback(self):
+        xml_tool_call = (
+            '<tool_call>\n<function=get_indicators>\n'
+            '<parameter=symbol>\n300308.SZ\n</parameter>\n'
+            '<parameter=indicator>\nmacd\n</parameter>\n'
+            '</function>\n</tool_call>'
+        )
+        prompt = _FakePrompt()
+        llm = _FakeLLM(
+            [_FakeResponse(content=xml_tool_call)],
+            [_FakeResponse(content="Real market analysis report")],
+        )
+
+        result, report = run_tool_report_chain(
+            prompt,
+            llm,
+            tools=["tool"],
+            messages=["state"],
+            system_message="sys",
+        )
+
+        self.assertEqual(report, "Real market analysis report")
+
+    def test_is_tool_call_text_detects_xml_patterns(self):
+        self.assertTrue(_is_tool_call_text('<tool_call><function=foo></tool_call>'))
+        self.assertTrue(_is_tool_call_text('<function=get_indicators>'))
+        self.assertTrue(_is_tool_call_text('<function_call>something</function_call>'))
+        self.assertFalse(_is_tool_call_text('Normal report text'))
+        self.assertFalse(_is_tool_call_text(''))
 
 
 if __name__ == "__main__":
