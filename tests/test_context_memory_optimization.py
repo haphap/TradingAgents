@@ -207,8 +207,10 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertNotIn("未明确说明", snapshot)
         self.assertNotIn("暂无", snapshot)
         self.assertIn("- 立场: 持有", snapshot)
-        self.assertIn("库存风险", snapshot)
-        self.assertIn("继续跟踪金价与并购进度", snapshot)
+        self.assertIn("库存与备货压力", snapshot)
+        self.assertIn("金价走势", snapshot)
+        self.assertIn("并购进度", snapshot)
+        self.assertNotIn("本轮新增了对库存风险的反驳", snapshot)
 
     def test_feedback_snapshot_fills_empty_fields_with_inferred_content(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -229,7 +231,7 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         self.assertIn("- 立场: 持有", snapshot)
         self.assertIn("- 本轮新增:", snapshot)
-        self.assertIn("估值偏高", snapshot)
+        self.assertIn("高估值消化能力", snapshot)
         self.assertIn("- 关键反驳:", snapshot)
         self.assertIn("- 待验证:", snapshot)
         self.assertNotIn("- 立场: \n", snapshot)
@@ -317,6 +319,30 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("库存与备货压力", snapshot)
         self.assertIn("需求与订单兑现", snapshot)
         self.assertIn("1.6T良率爬坡", snapshot)
+
+    def test_feedback_snapshot_rewrites_duplicate_fields_and_generic_to_verify(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "多头分析师: 空头分析师将估值与地缘政治风险直接推导为脆弱性，但宁德时代在价格战最激烈阶段仍实现净利润增长42.29%，"
+            "说明盈利韧性和定价权没有被破坏。下一轮需要继续跟踪一季报增速、400元阻力位突破情况以及储能订单兑现节奏。\n\n"
+            "反馈快照:\n"
+            "- 立场: 买入——盈利韧性仍强。\n"
+            "- 本轮新增: 空头分析师，我理解你对宁德时代当前估值和地缘政治风险的担忧，但你的分析框架忽略了这家企业最核心的护城河——在行业价格战最惨烈的2025年，宁德时代净利润逆势增长42.29%，这恰恰证明了其定价权而非脆弱性。让我用数据重新审视这笔投资的价值。\n"
+            "- 关键反驳: 空头分析师，我理解你对宁德时代当前估值和地缘政治风险的担忧，但你的分析框架忽略了这家企业最核心的护城河——在行业价格战最惨烈的2025年，宁德时代净利润逆势增长42.29%，这恰恰证明了其定价权而非脆弱性。让我用数据重新审视这笔投资的价值。\n"
+            "- 待验证: **投资决策的理性框架** 当前时点，宁德时代处于趋势向上但动能收敛的临界状态。"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertNotIn("投资决策的理性框架", snapshot)
+        self.assertNotIn("我理解你对宁德时代当前估值和地缘政治风险的担忧", snapshot)
+        self.assertIn("- 本轮新增:", snapshot)
+        self.assertIn("- 关键反驳:", snapshot)
+        self.assertIn("重点反驳了对手", snapshot)
+        self.assertIn("- 待验证: 下一轮继续跟踪", snapshot)
 
     def test_make_display_snapshot_uses_clean_clause_instead_of_raw_truncation(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)

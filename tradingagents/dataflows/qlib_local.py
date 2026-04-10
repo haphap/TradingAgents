@@ -210,6 +210,42 @@ def _read_feature(
     return series.dropna()
 
 
+def _expected_last_trading_day(end_date: str) -> Optional[pd.Timestamp]:
+    """Return the last trading day on or before *end_date*."""
+    _, end_idx = _date_to_cal_range(end_date, end_date)
+    if end_idx < 0:
+        return None
+    return pd.Timestamp(_load_calendar()[end_idx])
+
+
+def _drop_incomplete_market_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only rows with a complete daily bar."""
+    if df.empty:
+        return df
+
+    required_cols = [col for col in ["open", "high", "low", "close", "volume"] if col in df.columns]
+    if required_cols:
+        df = df.dropna(subset=required_cols, how="any")
+    return df
+
+
+def _ensure_local_data_is_current(df: pd.DataFrame, instrument: str, end_date: str) -> None:
+    """Raise when local qlib data is stale relative to the requested end date."""
+    if df.empty:
+        return
+
+    expected_last_day = _expected_last_trading_day(end_date)
+    if expected_last_day is None:
+        return
+
+    latest_available = pd.Timestamp(df.index.max())
+    if latest_available < expected_last_day:
+        raise DataVendorUnavailable(
+            f"Qlib local data for '{instrument}' is incomplete: latest complete bar is "
+            f"{latest_available.strftime('%Y-%m-%d')}, requested through {expected_last_day.strftime('%Y-%m-%d')}."
+        )
+
+
 def _load_ohlcv(
     instrument: str, start_date: str, end_date: str
 ) -> pd.DataFrame:
@@ -222,11 +258,7 @@ def _load_ohlcv(
 
     df = pd.DataFrame(series_dict)
     df.index.name = "Date"
-
-    # Drop rows where all price columns are NaN
-    price_cols = ["open", "high", "low", "close"]
-    df = df.dropna(subset=[c for c in price_cols if c in df.columns], how="all")
-    return df
+    return _drop_incomplete_market_rows(df)
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +278,7 @@ def get_stock(symbol: str, start_date: str, end_date: str) -> str:
         raise DataVendorUnavailable(
             f"No qlib local data for '{instrument}' between {start_date} and {end_date}."
         )
+    _ensure_local_data_is_current(df, instrument, end_date)
 
     output = df.copy()
     output.index = output.index.strftime("%Y-%m-%d")
@@ -276,6 +309,7 @@ def _load_price_frame(
         raise DataVendorUnavailable(
             f"Insufficient qlib local data for '{instrument}' before {curr_date}."
         )
+    _ensure_local_data_is_current(df, instrument, curr_date)
 
     # Rename to match stockstats expectations
     df = df.rename(columns={

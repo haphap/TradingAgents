@@ -900,6 +900,92 @@ def _copied_snapshot_field_keys(snapshot: str, source_text: str) -> set[str]:
     return copied_fields
 
 
+def _snapshot_fields_substantially_overlap(left: str, right: str) -> bool:
+    normalized_left = _normalize_overlap_text(_strip_snapshot_discourse_openers(left))
+    normalized_right = _normalize_overlap_text(_strip_snapshot_discourse_openers(right))
+    if len(normalized_left) < 24 or len(normalized_right) < 24:
+        return False
+    if normalized_left == normalized_right:
+        return True
+
+    shorter, longer = sorted((normalized_left, normalized_right), key=len)
+    if len(shorter) >= 30 and shorter in longer:
+        return True
+
+    prefix_len = min(len(shorter), len(longer), 60)
+    return prefix_len >= 36 and shorter[:prefix_len] == longer[:prefix_len]
+
+
+def _looks_like_snapshot_rebuttal(value: str) -> bool:
+    normalized = normalize_chinese_role_terms((value or "").strip())
+    if not normalized:
+        return False
+    if len(normalized) <= 80:
+        return True
+
+    keywords = (
+        "对手", "空头分析师", "多头分析师", "激进分析师", "保守分析师", "中性分析师",
+        "bull analyst", "bear analyst", "aggressive analyst", "conservative analyst",
+        "neutral analyst", "忽略", "误判", "高估", "低估", "但", "然而", "却", "反驳",
+        "质疑", "难以成立", "does not hold", "missed", "ignored", "however", "but ",
+        "challenge", "rebut",
+    )
+    lowered = normalized.lower()
+    return any(keyword in normalized or keyword in lowered for keyword in keywords)
+
+
+def _looks_like_snapshot_verification(value: str) -> bool:
+    normalized = normalize_chinese_role_terms((value or "").strip())
+    if not normalized:
+        return False
+
+    if (
+        normalized.startswith("**")
+        or normalized.startswith("#")
+        or "理性框架" in normalized
+        or "decision framework" in normalized.lower()
+    ):
+        return False
+    if len(normalized) <= 80:
+        return True
+
+    lowered = normalized.lower()
+    keywords = (
+        "跟踪", "验证", "观察", "等待", "确认", "关注", "若", "如果", "一旦", "突破", "跌破",
+        "守稳", "高于", "低于", "阈值", "财报", "订单", "毛利率", "利润率", "量能", "成交量",
+        "业绩", "指引", "track", "verify", "watch", "monitor", "confirm", "earnings",
+        "orders", "margin", "volume", "guidance", "above", "below", "break", "if ",
+    )
+    if any(keyword in normalized or keyword in lowered for keyword in keywords):
+        return True
+
+    return False
+
+
+def _snapshot_replacement_fields(snapshot: str, source_text: str) -> set[str]:
+    fields = _parse_snapshot_fields(snapshot)
+    replacement_fields = set(_copied_snapshot_field_keys(snapshot, source_text))
+
+    new_this_round = fields.get("new_this_round", "")
+    key_rebuttal = fields.get("key_rebuttal", "")
+    to_verify = fields.get("to_verify", "")
+
+    if _snapshot_fields_substantially_overlap(new_this_round, key_rebuttal):
+        replacement_fields.update({"new_this_round", "key_rebuttal"})
+    if (
+        _snapshot_fields_substantially_overlap(new_this_round, to_verify)
+        or _snapshot_fields_substantially_overlap(key_rebuttal, to_verify)
+    ):
+        replacement_fields.add("to_verify")
+
+    if key_rebuttal and not _looks_like_snapshot_rebuttal(key_rebuttal):
+        replacement_fields.add("key_rebuttal")
+    if to_verify and not _looks_like_snapshot_verification(to_verify):
+        replacement_fields.add("to_verify")
+
+    return replacement_fields
+
+
 def is_feedback_snapshot_inferred(text: str) -> bool:
     """Return True when the displayed snapshot will be inferred from the body."""
     if not text or not text.strip():
@@ -912,7 +998,7 @@ def is_feedback_snapshot_inferred(text: str) -> bool:
             return (
                 _contains_placeholder_snapshot(snapshot)
                 or _snapshot_has_missing_fields(snapshot)
-                or bool(_copied_snapshot_field_keys(snapshot, text))
+                or bool(_snapshot_replacement_fields(snapshot, text))
             )
     return True
 
@@ -922,6 +1008,12 @@ def _extract_snapshot_topics(body: str) -> list[str]:
     patterns = (
         (r"库存|存货", "库存与备货压力" if _is_chinese_output() else "inventory positioning"),
         (r"需求|订单|出货", "需求与订单兑现" if _is_chinese_output() else "demand and order conversion"),
+        (r"金价|黄金", "金价走势" if _is_chinese_output() else "gold price trend"),
+        (r"并购|收购|整合", "并购进度" if _is_chinese_output() else "M&A execution"),
+        (r"地缘|关税|出口|海外", "地缘与海外政策风险" if _is_chinese_output() else "geopolitical and export-policy risk"),
+        (r"价格战|定价权", "价格战下的定价权" if _is_chinese_output() else "pricing power through the price war"),
+        (r"财报|业绩|一季报|q[1-4]", "业绩验证" if _is_chinese_output() else "earnings confirmation"),
+        (r"储能", "储能需求兑现" if _is_chinese_output() else "storage-demand conversion"),
         (r"1\.6t|良率", "1.6T良率爬坡" if _is_chinese_output() else "1.6T yield ramp"),
         (r"估值|pe|市盈率", "高估值消化能力" if _is_chinese_output() else "valuation absorption"),
         (r"毛利率|利润率", "毛利率变化" if _is_chinese_output() else "margin trend"),
@@ -954,9 +1046,9 @@ def _infer_feedback_snapshot_from_body(text: str, paraphrase: bool = False) -> s
         if paraphrase:
             joined_topics = "、".join(topics[:3]) if topics else f"“{rating}”逻辑"
             follow_up_topics = "、".join(topics[:3]) if topics else "关键数据与风险触发条件"
-            new_this_round = f"本轮新增了对{joined_topics}的归因和执行含义说明，补足了该立场成立所依赖的证据链。"
-            rebuttal_source = f"重点反驳了对手把{joined_topics}线性等同于风险落地的推断，强调需要结合订单、动量和兑现节奏综合判断。"
-            to_verify = f"下一轮继续跟踪{follow_up_topics}是否同步改善，以确认“{rating}”判断能否延续。"
+            new_this_round = f"本轮新增了对{joined_topics}的归因和执行含义说明，把这些信号如何支撑“{rating}”判断的传导链条补充得更完整。"
+            rebuttal_source = f"重点反驳了对手把{joined_topics}线性等同于单边风险的推断，指出还需结合兑现节奏、盈利韧性和价格信号综合判断，因此其结论并不充分。"
+            to_verify = f"下一轮继续跟踪{follow_up_topics}这几项指标是否同步验证；若关键数据没有改善，就需要重新评估“{rating}”判断。"
         else:
             new_this_round = (
                 _pick_sentence(sentences, ("新增", "补充", "转向", "强调", "原因", "估值", "库存", "需求", "订单"))
@@ -1023,22 +1115,23 @@ def extract_feedback_snapshot(text: str) -> str:
         if idx != -1:
             snapshot = text[idx:].strip()
             if _contains_placeholder_snapshot(snapshot):
-                return _infer_feedback_snapshot_from_body(text)
+                return _infer_feedback_snapshot_from_body(text, paraphrase=True)
             normalized_snapshot = normalize_chinese_role_terms(snapshot)
-            copied_fields = _copied_snapshot_field_keys(normalized_snapshot, text)
-            if _snapshot_has_missing_fields(normalized_snapshot) or copied_fields:
+            replacement_fields = _snapshot_replacement_fields(normalized_snapshot, text)
+            has_missing_fields = _snapshot_has_missing_fields(normalized_snapshot)
+            if has_missing_fields or replacement_fields:
                 inferred_snapshot = _infer_feedback_snapshot_from_body(
                     text,
-                    paraphrase=bool(copied_fields),
+                    paraphrase=True,
                 )
                 return _merge_snapshot_with_inferred(
                     normalized_snapshot,
                     inferred_snapshot,
-                    replacement_fields=copied_fields,
+                    replacement_fields=replacement_fields,
                 )
             return normalized_snapshot
 
-    return _infer_feedback_snapshot_from_body(text)
+    return _infer_feedback_snapshot_from_body(text, paraphrase=True)
 
 
 def save_snapshot_file(
