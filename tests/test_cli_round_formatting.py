@@ -67,7 +67,9 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("#### 空头分析师\n\n空头分析师: 第二轮空头反驳", formatted)
         self.assertIn("- 发生了什么变化: 转向更谨慎", formatted)
         self.assertIn("- 下一轮教训: 盯库存", formatted)
-        self.assertTrue(formatted.endswith("### 研究经理结论\n研究经理: 最终结论"))
+        self.assertIn("### 研究经理结论\n研究经理: 最终结论", formatted)
+        self.assertIn("#### 反馈快照摘要", formatted)
+        self.assertLess(formatted.index("研究经理: 最终结论"), formatted.index("#### 反馈快照摘要"))
 
     def test_risk_management_history_supports_english_prefixes(self):
         risk_state = {
@@ -134,6 +136,65 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         self.assertIn("##### 自动复盘", formatted)
         self.assertNotIn("##### 本轮复盘", formatted)
+
+    def test_research_manager_shows_body_before_snapshot_summary(self):
+        debate_state = {
+            "bull_history": "",
+            "bear_history": "",
+            "judge_decision": (
+                "## 辩论裁决\n"
+                "多头证据更扎实，空头对估值风险的论证不足。\n\n"
+                "## 行为逻辑\n"
+                "先验证需求兑现，再决定是否继续加仓。\n\n"
+                "## 持仓建议\n"
+                "维持增持，回踩支撑再分批加仓。\n\n"
+                "反馈快照:\n"
+                "- 立场: 增持——需求与盈利兑现仍占优。\n"
+                "- 本轮新增: 新增了对需求验证节奏的约束。\n"
+                "- 关键反驳: 空头高估了估值压缩速度。\n"
+                "- 待验证: 跟踪订单、毛利率和客户资本开支。"
+            ),
+            "judge_snapshot_path": "/tmp/research_manager_round_1.md",
+        }
+
+        formatted = format_research_team_history(debate_state)
+
+        self.assertIn("### 研究经理结论", formatted)
+        self.assertIn("## 辩论裁决", formatted)
+        self.assertIn("## 行为逻辑", formatted)
+        self.assertIn("## 持仓建议", formatted)
+        self.assertIn("#### 反馈快照摘要", formatted)
+        self.assertIn("(完整内容见: /tmp/research_manager_round_1.md)", formatted)
+        self.assertLess(formatted.index("## 辩论裁决"), formatted.index("#### 反馈快照摘要"))
+
+    def test_research_team_history_shows_decision_summary_outside_argument_body(self):
+        debate_state = {
+            "bull_history": (
+                "多头分析师: 这是正文论证。\n\n"
+                "决策摘要:\n"
+                "- 评级: 增持\n"
+                "- 置信度: 80%\n"
+                "- 时间区间: 6-12个月\n"
+                "- 关键假设:\n"
+                "  1. AI需求持续。\n"
+                "  2. 公司维持份额。\n"
+                "  3. 供应链稳定。\n\n"
+                "反馈快照:\n"
+                "- 当前观点: 增持\n"
+                "- 发生了什么变化: 新增催化剂。\n"
+                "- 为什么变化: 需求增强。\n"
+                "- 关键反驳: 空头低估景气度。\n"
+                "- 下一轮教训: 跟踪订单。"
+            ),
+            "bear_history": "",
+            "judge_decision": "",
+        }
+
+        formatted = format_research_team_history(debate_state)
+
+        self.assertIn("这是正文论证。", formatted)
+        self.assertIn("##### 决策摘要\n决策摘要:\n- 评级: 增持", formatted)
+        self.assertLess(formatted.index("这是正文论证。"), formatted.index("##### 决策摘要"))
 
 
 if __name__ == "__main__":

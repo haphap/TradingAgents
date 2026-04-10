@@ -3,6 +3,8 @@ from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     extract_feedback_snapshot,
+    get_analyst_decision_instruction,
+    get_analyst_decision_template,
     get_bull_proposal_instruction,
     get_language_instruction,
     get_no_greeting_instruction,
@@ -12,6 +14,7 @@ from tradingagents.agents.utils.agent_utils import (
     make_display_snapshot,
     normalize_chinese_role_terms,
     save_snapshot_file,
+    strip_analyst_decision_summary,
     strip_feedback_snapshot,
     strip_role_prefix,
 )
@@ -59,11 +62,14 @@ Latest bear feedback snapshot: {bear_snapshot}
 Your complete debate history: {bull_history}
 Bear's complete debate history: {bear_history}
 Last bear argument body: {current_response}
-Reflections from similar situations and lessons learned: {past_memory_str}
-Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position. You must also address reflections and learn from lessons and mistakes you made in the past.
+Internal lessons from similar situations (use internally only; do not quote, reveal, translate, or restate them in the visible answer): {past_memory_str}
+Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position. You must learn from these lessons without mentioning them explicitly in the answer.
 When writing in Chinese, use the exact role names "{localize_role_name('Bull Analyst')}" and "{localize_role_name('Bear Analyst')}". Do not use variants like "牛派分析师" or "熊派分析师".
 Your main argument body must be written entirely in Chinese. {get_bull_proposal_instruction()}
-After your normal argument, append an exact block using this template:
+{get_analyst_decision_instruction()}
+Use this exact decision-summary template:
+{get_analyst_decision_template()}
+After the decision summary, append an exact feedback snapshot block using this template:
 {get_snapshot_template(round_index)}
 {get_snapshot_writing_instruction(round_index)}{get_language_instruction()}{get_no_greeting_instruction()}"""
 
@@ -80,6 +86,10 @@ After your normal argument, append an exact block using this template:
             raw_content = fallback
 
         argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Bull Analyst")
+        visible_argument_body = strip_role_prefix(
+            strip_analyst_decision_summary(strip_feedback_snapshot(raw_content)),
+            "Bull Analyst",
+        )
         argument = f"{localize_role_name('Bull Analyst')}: {argument_body}"
         new_bull_snapshot_full = extract_feedback_snapshot(raw_content)
 
@@ -100,13 +110,15 @@ After your normal argument, append an exact block using this template:
             "history": investment_debate_state.get("history", "") + "\n" + argument,
             "bull_history": bull_history + "\n" + argument,
             "bear_history": investment_debate_state.get("bear_history", ""),
-            "current_response": argument,
-            "current_bull_response": argument,
+            "current_response": f"{localize_role_name('Bull Analyst')}: {visible_argument_body}",
+            "current_bull_response": f"{localize_role_name('Bull Analyst')}: {visible_argument_body}",
             "current_bear_response": investment_debate_state.get("current_bear_response", ""),
             "bull_snapshot": new_bull_snapshot,
             "bear_snapshot": bear_snapshot,
             "bull_snapshot_path": snapshot_path,
             "bear_snapshot_path": investment_debate_state.get("bear_snapshot_path", ""),
+            "judge_snapshot": investment_debate_state.get("judge_snapshot", ""),
+            "judge_snapshot_path": investment_debate_state.get("judge_snapshot_path", ""),
             "debate_brief": new_debate_brief,
             "latest_speaker": "Bull Analyst",
             "judge_decision": investment_debate_state.get("judge_decision", ""),

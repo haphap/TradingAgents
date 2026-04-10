@@ -26,6 +26,8 @@ class InvestDebateState(TypedDict):
     debate_brief: Annotated[str, "Compact latest debate brief"]
     latest_speaker: Annotated[str, "Speaker that updated the brief last"]
     judge_decision: Annotated[str, "Final judge decision"]  # Last response
+    judge_snapshot: Annotated[str, "Latest research manager feedback snapshot"]
+    judge_snapshot_path: Annotated[str, "Path to full research manager snapshot file"]
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
 
 

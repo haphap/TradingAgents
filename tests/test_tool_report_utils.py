@@ -94,6 +94,27 @@ class ToolReportUtilsTests(unittest.TestCase):
 
         self.assertEqual(report, "Real market analysis report")
 
+    def test_second_fallback_runs_when_first_fallback_is_empty(self):
+        prompt = _FakePrompt()
+        llm = _FakeLLM(
+            [_FakeResponse(content="")],
+            [
+                _FakeResponse(content=""),
+                _FakeResponse(content="Recovered report on second fallback"),
+            ],
+        )
+
+        result, report = run_tool_report_chain(
+            prompt,
+            llm,
+            tools=["tool"],
+            messages=["state"],
+            system_message="sys",
+        )
+
+        self.assertEqual(report, "Recovered report on second fallback")
+        self.assertEqual(result.content, "Recovered report on second fallback")
+
     def test_is_tool_call_text_detects_xml_patterns(self):
         self.assertTrue(_is_tool_call_text('<tool_call><function=foo></tool_call>'))
         self.assertTrue(_is_tool_call_text('<function=get_indicators>'))

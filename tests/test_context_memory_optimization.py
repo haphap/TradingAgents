@@ -5,8 +5,11 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.dataflows.config import get_config, set_config
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
+    extract_analyst_decision_summary,
     extract_feedback_snapshot,
     get_snapshot_template,
+    make_display_snapshot,
+    strip_analyst_decision_summary,
     strip_feedback_snapshot,
     truncate_for_prompt,
 )
@@ -121,6 +124,69 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("当前观点", snapshot)
         self.assertEqual(body, "论证正文。")
 
+    def test_analyst_decision_summary_helpers_strip_markdown_block(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "论证正文。\n\n"
+            "决策摘要:\n"
+            "- 评级: 增持\n"
+            "- 置信度: 80%\n"
+            "- 时间区间: 6-12个月\n"
+            "- 关键假设:\n"
+            "  1. AI需求持续。\n"
+            "  2. 公司维持份额。\n"
+            "  3. 供应链无重大扰动。\n\n"
+            "反馈快照:\n"
+            "- 当前观点: 增持。\n"
+            "- 发生了什么变化: 新增需求验证。\n"
+            "- 为什么变化: 景气度上升。\n"
+            "- 关键反驳: 空头低估需求。\n"
+            "- 下一轮教训: 跟踪订单。"
+        )
+
+        summary = extract_analyst_decision_summary(response)
+        body = strip_analyst_decision_summary(strip_feedback_snapshot(response))
+
+        self.assertIn("决策摘要:", summary)
+        self.assertIn("- 评级: 增持", summary)
+        self.assertIn("- 置信度: 80%", summary)
+        self.assertEqual(body, "论证正文。")
+
+    def test_analyst_decision_summary_normalizes_legacy_xml(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "论证正文。\n\n"
+            "**Reflections from similar situations and lessons learned:**\n"
+            "Do not show this.\n\n"
+            "```xml\n"
+            "<final_answer>\n"
+            "<conclusion>增持</conclusion>\n"
+            "<confidence_level>80%</confidence_level>\n"
+            "<time_horizon>6-12 months</time_horizon>\n"
+            "<key_assumptions>\n"
+            "1. AI需求持续\n"
+            "2. 份额稳定\n"
+            "3. 无重大扰动\n"
+            "</key_assumptions>\n"
+            "</final_answer>\n"
+            "```\n"
+        )
+
+        summary = extract_analyst_decision_summary(response)
+        body = strip_analyst_decision_summary(response)
+
+        self.assertIn("决策摘要:", summary)
+        self.assertIn("- 评级: 增持", summary)
+        self.assertIn("- 置信度: 80%", summary)
+        self.assertNotIn("Reflections from similar situations", body)
+        self.assertNotIn("<final_answer>", body)
+
     def test_feedback_snapshot_infers_substantive_chinese_content_when_placeholder_block_is_used(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
         cfg["output_language"] = "Chinese"
@@ -140,7 +206,7 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         self.assertNotIn("未明确说明", snapshot)
         self.assertNotIn("暂无", snapshot)
-        self.assertIn("- 当前观点: 持有", snapshot)
+        self.assertIn("- 立场: 持有", snapshot)
         self.assertIn("库存风险", snapshot)
         self.assertIn("继续跟踪金价与并购进度", snapshot)
 
@@ -161,12 +227,12 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         snapshot = extract_feedback_snapshot(response)
 
-        self.assertIn("- 当前观点: 持有", snapshot)
-        self.assertIn("- 发生了什么变化:", snapshot)
-        self.assertIn("- 为什么变化: 估值偏高。", snapshot)
+        self.assertIn("- 立场: 持有", snapshot)
+        self.assertIn("- 本轮新增:", snapshot)
+        self.assertIn("估值偏高", snapshot)
         self.assertIn("- 关键反驳:", snapshot)
-        self.assertIn("- 下一轮教训:", snapshot)
-        self.assertNotIn("- 当前观点: \n", snapshot)
+        self.assertIn("- 待验证:", snapshot)
+        self.assertNotIn("- 立场: \n", snapshot)
         self.assertNotIn("- 关键反驳: \n", snapshot)
 
     def test_feedback_snapshot_detects_explicit_chinese_rating_terms(self):
@@ -186,7 +252,7 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         snapshot = extract_feedback_snapshot(response)
 
-        self.assertIn("- 当前观点: 减持", snapshot)
+        self.assertIn("- 立场: 减持", snapshot)
 
     def test_feedback_snapshot_ignores_negated_buy_language(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -205,8 +271,8 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         snapshot = extract_feedback_snapshot(response)
 
-        self.assertIn("- 当前观点: 持有", snapshot)
-        self.assertNotIn("- 当前观点: 买入", snapshot)
+        self.assertIn("- 立场: 持有", snapshot)
+        self.assertNotIn("- 立场: 买入", snapshot)
 
     def test_feedback_snapshot_ignores_negated_english_buy_language(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -225,8 +291,69 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         snapshot = extract_feedback_snapshot(response)
 
-        self.assertIn("- Current thesis: HOLD", snapshot)
-        self.assertNotIn("- Current thesis: BUY", snapshot)
+        self.assertIn("- Stance: HOLD", snapshot)
+        self.assertNotIn("- Stance: BUY", snapshot)
+
+    def test_feedback_snapshot_rewrites_copied_body_fields(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "激进分析师: 各位，我们必须直面这个市场的狂热与理性之间的巨大裂痕。"
+            "保守派和中性分析师建议我们持有观望，理由是高估值、库存压力和技术面未反转。"
+            "但这些存货更像是为AI需求爆发准备的战略备货，而不是简单的减值风险。"
+            "153-160元区间已经形成底部结构，下一轮还要继续跟踪1.6T良率、订单兑现和量能变化。\n\n"
+            "反馈快照:\n"
+            "- 立场: 激进加仓。\n"
+            "- 本轮新增: 激进分析师: 各位，我们必须直面这个市场的狂热与理性之间的巨大裂痕。保守派和中性分析师建议我们持有观望，理由是高估值、库存压力和技术面未反转。\n"
+            "- 关键反驳: 但这些存货更像是为AI需求爆发准备的战略备货，而不是简单的减值风险。\n"
+            "- 待验证: 153-160元区间已经形成底部结构，下一轮还要继续跟踪1.6T良率、订单兑现和量能变化。"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertNotIn("各位，我们必须直面", snapshot)
+        self.assertIn("库存与备货压力", snapshot)
+        self.assertIn("需求与订单兑现", snapshot)
+        self.assertIn("1.6T良率爬坡", snapshot)
+
+    def test_make_display_snapshot_uses_clean_clause_instead_of_raw_truncation(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        snapshot = (
+            "反馈快照:\n"
+            "- 立场: 激进加仓——AI需求与订单兑现仍在强化。\n"
+            "- 本轮新增: 各位，我们必须直面这个市场的狂热与理性之间的巨大裂痕。库存与备货压力其实对应订单前置准备。\n"
+            "- 关键反驳: 首先，对手把高估值直接等同于泡沫，但忽略了订单兑现节奏。\n"
+            "- 待验证: 再看技术面，继续跟踪1.6T良率、订单兑现和量能变化。"
+        )
+
+        display = make_display_snapshot(snapshot, "/tmp/snapshot.md")
+
+        self.assertNotIn("各位，我们必须直面", display)
+        self.assertNotIn("首先，对手", display)
+        self.assertNotIn("再看技术面", display)
+        self.assertIn("(完整内容见: /tmp/snapshot.md)", display)
+
+    def test_feedback_snapshot_prefers_risk_recommendation_for_risk_debate_body(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "保守分析师: 各位，作为保守风险分析师，我必须再次强调高估值和库存风险。\n"
+            "激进分析师主张增持，但我认为当前风险收益比不支持继续冒进。\n"
+            "再看技术面，股价仍在50日均线下方，需继续观察支撑位。\n\n"
+            "风险建议: **设止损后持有**"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertIn("- 立场: 设止损后持有", snapshot)
+        self.assertNotIn("- 立场: 增持", snapshot)
 
 
 if __name__ == "__main__":

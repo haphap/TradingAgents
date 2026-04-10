@@ -103,7 +103,7 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         self.assertIn("买入", prompt)
         self.assertIn("持有", prompt)
 
-    def test_bull_bear_researcher_prompts_require_chinese_body_and_chinese_final_title(self):
+    def test_bull_bear_researcher_prompts_require_chinese_body_and_decision_summary(self):
         for factory in (create_bull_researcher, create_bear_researcher):
             llm = _CapturingLLM()
             node = factory(llm, _EmptyMemory())
@@ -111,12 +111,15 @@ class OutputLanguagePropagationTests(unittest.TestCase):
 
             prompt = llm.calls[0]
             self.assertIn("written entirely in Chinese", prompt)
-            self.assertIn("最终交易建议", prompt)
+            self.assertIn("决策摘要", prompt)
+            self.assertIn("Internal lessons from similar situations", prompt)
+            self.assertIn("do not quote, reveal, translate, or restate", prompt)
             self.assertIn("Write your entire response in Chinese.", prompt)
             self.assertIn("Do not use variants like", prompt)
             self.assertIn("牛派分析师", prompt)
             self.assertIn("熊派分析师", prompt)
-            self.assertIn("禁止填写“未明确说明”“暂无”“同上”“无变化”", prompt)
+            self.assertIn("反馈快照", prompt)
+            self.assertIn("关键约束", prompt)
 
     def test_normalize_chinese_role_terms_replaces_bull_bear_variants(self):
         text = "我是熊派分析师，也不同意牛派分析师和熊派投资者的说法。"
@@ -142,7 +145,7 @@ class OutputLanguagePropagationTests(unittest.TestCase):
             prompt = llm.calls[0]
             self.assertIn("Write your entire response in Chinese.", prompt)
             self.assertIn("反馈快照", prompt)
-            self.assertIn("禁止填写“未明确说明”“暂无”“同上”“无变化”", prompt)
+            self.assertIn("关键约束", prompt)
 
     def test_portfolio_manager_prompt_respects_output_language(self):
         llm = _CapturingLLM()
@@ -161,12 +164,11 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         self.assertIn("持有", prompt)
         self.assertIn("减持", prompt)
         self.assertIn("卖出", prompt)
-        self.assertIn("禁止填写“未明确说明”“暂无”“同上”“无变化”", prompt)
+        self.assertIn("关键约束", prompt)
 
     def test_collaboration_stop_instruction_prefers_chinese_display(self):
         instruction = get_collaboration_stop_instruction()
-        self.assertIn("最终交易建议: **买入/持有/卖出**", instruction)
-        self.assertIn("FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**", instruction)
+        self.assertIn("最终交易建议: **买入/增持/持有/减持/卖出**", instruction)
 
 
 if __name__ == "__main__":

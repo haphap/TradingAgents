@@ -87,8 +87,6 @@ def truncate_response_for_prompt(text: str) -> str:
 
 
 def get_snapshot_template(round_index: int = 1) -> str:
-    if round_index == 0:
-        return ""
     if _is_chinese_output():
         return """反馈快照:
 - 立场:
@@ -104,8 +102,6 @@ def get_snapshot_template(round_index: int = 1) -> str:
 
 
 def get_snapshot_writing_instruction(round_index: int = 1) -> str:
-    if round_index == 0:
-        return ""
     if _is_chinese_output():
         return (
             "反馈快照是对本轮核心内容的完整、详细记录，必须用自己的语言概括，禁止从正文中直接复制句子。\n"
@@ -249,15 +245,15 @@ def get_bear_proposal_instruction() -> str:
             "在给出最终结论前，先自我审查：你的评级是否与你所列举的风险和负面证据一致？"
             "作为空头分析师，如果你的论点强调了下行风险，结论就应反映这一判断（通常为减持或卖出）。"
             "不允许出现论点强调风险、结论却比多头分析师还乐观的情形。"
-            "以'最终交易建议: **减持**'或'最终交易建议: **卖出**'（或在有力证据支撑时用**持有**）结束。"
+            "在文末输出“决策摘要”块，并在其中给出“评级: 减持/卖出”（或在有力证据支撑时用“持有”）。"
         )
     return (
         "Before stating your conclusion, verify self-consistency: does your rating logically follow from the risks "
         "and downsides you've argued? As a Bear Analyst, if your argument emphasizes significant risks, your "
         "conclusion should reflect that (typically UNDERWEIGHT or SELL). You must not conclude more optimistically "
         "than your own arguments warrant — a bearish case cannot end with BUY or OVERWEIGHT. "
-        "Conclude with 'FINAL TRANSACTION PROPOSAL: **UNDERWEIGHT**' or 'FINAL TRANSACTION PROPOSAL: **SELL**' "
-        "(or **HOLD** only when your arguments genuinely support a neutral stance)."
+        "End with a 'DECISION SUMMARY' block whose rating is UNDERWEIGHT or SELL "
+        "(or HOLD only when your arguments genuinely support a neutral stance)."
     )
 
 
@@ -270,15 +266,52 @@ def get_bull_proposal_instruction() -> str:
             "在给出最终结论前，先自我审查：你的评级是否与你所列举的增长潜力和正面证据一致？"
             "作为多头分析师，如果你的论点强调了上行机会，结论就应反映这一判断（通常为买入或增持）。"
             "不允许出现论点强调机会、结论却比空头分析师还悲观的情形。"
-            "以'最终交易建议: **买入**'或'最终交易建议: **增持**'（或在有力证据支撑时用**持有**）结束。"
+            "在文末输出“决策摘要”块，并在其中给出“评级: 买入/增持”（或在有力证据支撑时用“持有”）。"
         )
     return (
         "Before stating your conclusion, verify self-consistency: does your rating logically follow from the "
         "growth potential and positive indicators you've argued? As a Bull Analyst, if your argument emphasizes "
         "strong upside, your conclusion should reflect that (typically BUY or OVERWEIGHT). You must not conclude "
         "more pessimistically than your own arguments warrant — a bullish case cannot end with SELL or UNDERWEIGHT. "
-        "Conclude with 'FINAL TRANSACTION PROPOSAL: **BUY**' or 'FINAL TRANSACTION PROPOSAL: **OVERWEIGHT**' "
-        "(or **HOLD** only when your arguments genuinely support a neutral stance)."
+        "End with a 'DECISION SUMMARY' block whose rating is BUY or OVERWEIGHT "
+        "(or HOLD only when your arguments genuinely support a neutral stance)."
+    )
+
+
+def get_analyst_decision_template() -> str:
+    if _is_chinese_output():
+        return """决策摘要:
+- 评级:
+- 置信度:
+- 时间区间:
+- 关键假设:
+  1.
+  2.
+  3."""
+    return """DECISION SUMMARY:
+- Rating:
+- Confidence:
+- Time Horizon:
+- Key Assumptions:
+  1.
+  2.
+  3."""
+
+
+def get_analyst_decision_instruction() -> str:
+    if _is_chinese_output():
+        return (
+            "请在正文结束后、反馈快照之前，追加一个严格使用 Markdown 的“决策摘要”块。"
+            "该块必须包含四项：评级、置信度、时间区间、关键假设（3条）。"
+            "不要输出 XML、JSON、代码块、<final_answer> 标签，也不要输出英文标题 "
+            "“Reflections from similar situations and lessons learned”。"
+            "历史经验只允许内部吸收，不得在可见答案中直接引用、复述或翻译。"
+        )
+    return (
+        "After the main argument and before the feedback snapshot, append a strict Markdown "
+        "'DECISION SUMMARY' block with exactly four fields: Rating, Confidence, Time Horizon, "
+        "and Key Assumptions (3 bullets). Do not output XML, JSON, code fences, or "
+        "'<final_answer>' tags. Use past lessons internally only — do not quote or restate them."
     )
 
 
@@ -367,6 +400,19 @@ def get_collaboration_stop_instruction() -> str:
 
 SNAPSHOT_MARKERS = ("FEEDBACK SNAPSHOT:", "反馈快照:")
 SNAPSHOT_TEMPLATE = get_snapshot_template()
+DECISION_SUMMARY_MARKERS = ("DECISION SUMMARY:", "决策摘要:")
+_XML_FINAL_ANSWER_RE = re.compile(
+    r"```xml\s*(<final_answer>.*?</final_answer>)\s*```|(<final_answer>.*?</final_answer>)",
+    re.IGNORECASE | re.DOTALL,
+)
+_REFLECTIONS_HEADING_RE = re.compile(
+    r"\*{0,2}Reflections from similar situations and lessons learned:?\*{0,2}",
+    re.IGNORECASE,
+)
+_RISK_RECOMMENDATION_RE = re.compile(
+    r"(?:风险建议|RISK RECOMMENDATION)\s*[:：]\s*\**(.+?)\**(?:$|\n)",
+    re.IGNORECASE,
+)
 CHINESE_RATING_EXPLICIT_PATTERNS = [
     ("买入", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**买入\**")),
     ("增持", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**增持\**")),
@@ -431,6 +477,17 @@ def _get_rating_patterns() -> list[tuple[str, tuple[str, ...]]]:
     ]
 
 
+def _detect_risk_stance(text: str) -> str:
+    content = normalize_chinese_role_terms(text or "")
+    if not content.strip():
+        return ""
+
+    match = _RISK_RECOMMENDATION_RE.search(content)
+    if match:
+        return match.group(1).strip().strip("*").strip()
+    return ""
+
+
 def _detect_chinese_rating(text: str) -> str:
     content = normalize_chinese_role_terms(text or "")
     if not content.strip():
@@ -487,6 +544,35 @@ def _extract_sentences(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
+def _pick_sentence(sentences: list[str], keywords: tuple[str, ...]) -> str:
+    for sentence in sentences:
+        if any(keyword in sentence for keyword in keywords):
+            return _condense_excerpt(sentence, 120)
+    return ""
+
+
+def _strip_snapshot_discourse_openers(text: str) -> str:
+    cleaned = _strip_any_role_prefix_from_value(text)
+    cleaned = re.sub(r"^(?:各位|大家)[，,、:：!\s]*", "", cleaned)
+    cleaned = re.sub(
+        r"^(?:首先|其次|再看|另外|此外|最后|总体来看|总的来说|需要注意的是|值得注意的是|更重要的是|具体来说)[，,、:：\s]*",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(
+        r"^(?:first|second|third|next|finally|overall|more importantly|in addition|however)\b[,\s:;.-]*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
+
+
+def _normalize_overlap_text(text: str) -> str:
+    lowered = normalize_chinese_role_terms((text or "").lower())
+    return re.sub(r"[\W_]+", "", lowered, flags=re.UNICODE)
+
+
 def _contains_placeholder_snapshot(snapshot: str) -> bool:
     placeholders = (
         "未明确说明",
@@ -515,6 +601,189 @@ def _snapshot_field_aliases() -> dict[str, tuple[str, ...]]:
         "key_rebuttal": ("关键反驳", "Key rebuttal"),
         "to_verify": ("待验证", "To verify", "下一轮教训", "Lesson for next round"),
     }
+
+
+def _decision_field_labels() -> list[str]:
+    if _is_chinese_output():
+        return ["评级", "置信度", "时间区间", "关键假设"]
+    return ["Rating", "Confidence", "Time Horizon", "Key Assumptions"]
+
+
+def _decision_field_aliases() -> dict[str, tuple[str, ...]]:
+    return {
+        "rating": ("评级", "Rating", "结论", "Conclusion"),
+        "confidence": ("置信度", "Confidence", "Confidence Level"),
+        "time_horizon": ("时间区间", "Time Horizon", "持有周期"),
+        "key_assumptions": ("关键假设", "Key Assumptions"),
+    }
+
+
+def _empty_decision_fields() -> dict[str, str]:
+    return {key: "" for key in _decision_field_aliases()}
+
+
+def _parse_markdown_decision_fields(block: str) -> dict[str, str]:
+    fields = _empty_decision_fields()
+    if not block:
+        return fields
+
+    current_key = None
+    for raw_line in block.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped in DECISION_SUMMARY_MARKERS:
+            continue
+
+        matched = False
+        for field_key, aliases in _decision_field_aliases().items():
+            for label in aliases:
+                prefix = f"- {label}:"
+                if stripped.startswith(prefix):
+                    fields[field_key] = stripped[len(prefix):].strip()
+                    current_key = field_key
+                    matched = True
+                    break
+            if matched:
+                break
+
+        if matched:
+            continue
+
+        if current_key == "key_assumptions" and re.match(r"^(?:[-*]|\d+\.)\s+", stripped):
+            existing = fields[current_key]
+            fields[current_key] = (
+                existing + ("\n" if existing else "") + stripped
+            )
+            continue
+
+        if current_key and not stripped.startswith("-"):
+            fields[current_key] = (fields[current_key] + " " + stripped).strip()
+
+    return fields
+
+
+def _parse_xml_decision_fields(text: str) -> dict[str, str]:
+    fields = _empty_decision_fields()
+    if not text:
+        return fields
+
+    match = _XML_FINAL_ANSWER_RE.search(text)
+    if not match:
+        return fields
+
+    xml = match.group(1) or match.group(2) or ""
+    tag_mapping = {
+        "rating": ("conclusion",),
+        "confidence": ("confidence_level",),
+        "time_horizon": ("time_horizon",),
+        "key_assumptions": ("key_assumptions",),
+    }
+    for field_key, tags in tag_mapping.items():
+        for tag in tags:
+            tag_match = re.search(
+                rf"<{tag}>\s*(.*?)\s*</{tag}>",
+                xml,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if tag_match:
+                fields[field_key] = tag_match.group(1).strip()
+                break
+
+    assumptions = []
+    if fields["key_assumptions"]:
+        for line in fields["key_assumptions"].splitlines():
+            cleaned = line.strip()
+            if cleaned:
+                assumptions.append(cleaned)
+        fields["key_assumptions"] = "\n".join(assumptions)
+
+    return fields
+
+
+def _format_decision_summary_from_fields(fields: dict[str, str]) -> str:
+    if not any(value.strip() for value in fields.values()):
+        return ""
+
+    title = DECISION_SUMMARY_MARKERS[1] if _is_chinese_output() else DECISION_SUMMARY_MARKERS[0]
+    labels = _decision_field_labels()
+    keys = list(_decision_field_aliases().keys())
+    lines = [title]
+
+    for key, label in zip(keys[:-1], labels[:-1]):
+        value = fields.get(key, "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+
+    assumptions = fields.get("key_assumptions", "").strip()
+    if assumptions:
+        lines.append(f"- {labels[-1]}:")
+        for line in assumptions.splitlines():
+            lines.append(f"  {line.strip()}")
+
+    return "\n".join(lines)
+
+
+def extract_analyst_decision_summary(text: str) -> str:
+    """Extract a structured analyst decision summary block, normalizing legacy XML."""
+    if not text:
+        return ""
+
+    best_idx = -1
+    best_marker = None
+    for marker in DECISION_SUMMARY_MARKERS:
+        idx = text.rfind(marker)
+        if idx > best_idx:
+            best_idx = idx
+            best_marker = marker
+
+    if best_idx != -1 and best_marker is not None:
+        end = len(text)
+        for marker in SNAPSHOT_MARKERS:
+            idx = text.find(marker, best_idx)
+            if idx != -1:
+                end = min(end, idx)
+        block = text[best_idx:end].strip()
+        fields = _parse_markdown_decision_fields(block)
+        normalized = _format_decision_summary_from_fields(fields)
+        return normalized or block
+
+    fields = _parse_xml_decision_fields(text)
+    return _format_decision_summary_from_fields(fields)
+
+
+def _strip_reflections_section(text: str) -> str:
+    if not text:
+        return ""
+    match = _REFLECTIONS_HEADING_RE.search(text)
+    if not match:
+        return text
+
+    start = match.start()
+    end = len(text)
+    for marker in (*DECISION_SUMMARY_MARKERS, *SNAPSHOT_MARKERS):
+        idx = text.find(marker, match.end())
+        if idx != -1:
+            end = min(end, idx)
+    return (text[:start] + text[end:]).strip()
+
+
+def strip_analyst_decision_summary(text: str) -> str:
+    """Remove decision-summary/meta blocks from visible analyst body text."""
+    if not text:
+        return ""
+
+    cleaned = _strip_reflections_section(text)
+    cleaned = _XML_FINAL_ANSWER_RE.sub("", cleaned)
+
+    best_idx = -1
+    for marker in DECISION_SUMMARY_MARKERS:
+        idx = cleaned.rfind(marker)
+        if idx > best_idx:
+            best_idx = idx
+    if best_idx != -1:
+        cleaned = cleaned[:best_idx].rstrip()
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 _ALL_ROLE_NAMES: tuple[str, ...] = (
@@ -583,18 +852,52 @@ def _snapshot_has_missing_fields(snapshot: str) -> bool:
     return False
 
 
-def _merge_snapshot_with_inferred(snapshot: str, inferred_snapshot: str) -> str:
+def _merge_snapshot_with_inferred(
+    snapshot: str,
+    inferred_snapshot: str,
+    replacement_fields: set[str] | None = None,
+) -> str:
     explicit = _parse_snapshot_fields(snapshot)
     inferred = _parse_snapshot_fields(inferred_snapshot)
+    replacement_fields = replacement_fields or set()
 
     lines = [SNAPSHOT_MARKERS[1] if _is_chinese_output() else SNAPSHOT_MARKERS[0]]
     display_labels = _snapshot_field_labels()
     for field_key, label in zip(_snapshot_field_aliases().keys(), display_labels):
         value = explicit.get(field_key, "").strip()
-        if not value or value in {"。", ".", "...", "……", "-", "--"}:
+        if (
+            not value
+            or value in {"。", ".", "...", "……", "-", "--"}
+            or field_key in replacement_fields
+        ):
             value = inferred.get(field_key, "").strip()
         lines.append(f"- {label}: {value}")
     return "\n".join(lines)
+
+
+def _copied_snapshot_field_keys(snapshot: str, source_text: str) -> set[str]:
+    fields = _parse_snapshot_fields(snapshot)
+    body = _strip_snapshot_discourse_openers(
+        normalize_chinese_role_terms(
+            strip_analyst_decision_summary(strip_feedback_snapshot(source_text))
+        )
+    )
+    normalized_body = _normalize_overlap_text(body)
+    copied_fields = set()
+    if not normalized_body:
+        return copied_fields
+
+    for field_key, value in fields.items():
+        cleaned_value = _strip_snapshot_discourse_openers(value)
+        normalized_value = _normalize_overlap_text(cleaned_value)
+        if len(normalized_value) < 30:
+            continue
+        if normalized_value in normalized_body:
+            copied_fields.add(field_key)
+            continue
+        if len(normalized_value) >= 45 and normalized_value[:45] in normalized_body:
+            copied_fields.add(field_key)
+    return copied_fields
 
 
 def is_feedback_snapshot_inferred(text: str) -> bool:
@@ -606,21 +909,70 @@ def is_feedback_snapshot_inferred(text: str) -> bool:
         idx = text.rfind(marker)
         if idx != -1:
             snapshot = text[idx:].strip()
-            return _contains_placeholder_snapshot(snapshot) or _snapshot_has_missing_fields(snapshot)
+            return (
+                _contains_placeholder_snapshot(snapshot)
+                or _snapshot_has_missing_fields(snapshot)
+                or bool(_copied_snapshot_field_keys(snapshot, text))
+            )
     return True
 
 
-def _infer_feedback_snapshot_from_body(text: str) -> str:
-    body = normalize_chinese_role_terms(strip_feedback_snapshot(text))
+def _extract_snapshot_topics(body: str) -> list[str]:
+    topics = []
+    patterns = (
+        (r"库存|存货", "库存与备货压力" if _is_chinese_output() else "inventory positioning"),
+        (r"需求|订单|出货", "需求与订单兑现" if _is_chinese_output() else "demand and order conversion"),
+        (r"1\.6t|良率", "1.6T良率爬坡" if _is_chinese_output() else "1.6T yield ramp"),
+        (r"估值|pe|市盈率", "高估值消化能力" if _is_chinese_output() else "valuation absorption"),
+        (r"毛利率|利润率", "毛利率变化" if _is_chinese_output() else "margin trend"),
+        (r"支撑|底部|macd|金叉|死叉", "技术支撑与动量修复" if _is_chinese_output() else "technical support and momentum repair"),
+        (r"成交量|量能|放量|缩量|vwma", "量能确认" if _is_chinese_output() else "volume confirmation"),
+        (r"情绪|热度|社交媒体|抢筹", "情绪热度" if _is_chinese_output() else "sentiment heat"),
+        (r"资本开支|capex", "资本开支验证" if _is_chinese_output() else "capex follow-through"),
+        (r"波动|atr|止损", "波动率与止损边界" if _is_chinese_output() else "volatility and stop-loss bands"),
+    )
+    lowered = body.lower()
+    for pattern, topic in patterns:
+        if re.search(pattern, lowered, re.IGNORECASE):
+            topics.append(topic)
+    return topics
+
+
+def _infer_feedback_snapshot_from_body(text: str, paraphrase: bool = False) -> str:
+    body = _strip_snapshot_discourse_openers(
+        normalize_chinese_role_terms(
+            strip_analyst_decision_summary(strip_feedback_snapshot(text))
+        )
+    )
     sentences = _extract_sentences(body)
     first = _condense_excerpt(sentences[0], 120) if sentences else _condense_excerpt(body, 120)
     second = _condense_excerpt(sentences[1], 120) if len(sentences) > 1 else first
+    topics = _extract_snapshot_topics(body)
 
     if _is_chinese_output():
-        rating = _detect_chinese_rating(text)
-        new_this_round = f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
-        rebuttal_source = f"对手忽略了影响“{rating}”判断的关键数据或风险约束。"
-        to_verify = f"下一轮验证支持“{rating}”的关键数据和风险触发条件。"
+        rating = _detect_risk_stance(text) or _detect_chinese_rating(text)
+        if paraphrase:
+            joined_topics = "、".join(topics[:3]) if topics else f"“{rating}”逻辑"
+            follow_up_topics = "、".join(topics[:3]) if topics else "关键数据与风险触发条件"
+            new_this_round = f"本轮新增了对{joined_topics}的归因和执行含义说明，补足了该立场成立所依赖的证据链。"
+            rebuttal_source = f"重点反驳了对手把{joined_topics}线性等同于风险落地的推断，强调需要结合订单、动量和兑现节奏综合判断。"
+            to_verify = f"下一轮继续跟踪{follow_up_topics}是否同步改善，以确认“{rating}”判断能否延续。"
+        else:
+            new_this_round = (
+                _pick_sentence(sentences, ("新增", "补充", "转向", "强调", "原因", "估值", "库存", "需求", "订单"))
+                or first
+                or f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
+            )
+            rebuttal_source = (
+                _pick_sentence(sentences, ("反驳", "忽略", "但是", "但", "然而", "质疑"))
+                or (second if second and second != new_this_round else "")
+                or f"对手忽略了影响“{rating}”判断的关键数据或风险约束。"
+            )
+            to_verify = (
+                _pick_sentence(sentences, ("跟踪", "验证", "观察", "等待", "确认", "关注"))
+                or (second if second and second != new_this_round else "")
+                or f"下一轮验证支持“{rating}”的关键数据和风险触发条件。"
+            )
         return (
             "反馈快照:\n"
             f"- 立场: {rating}\n"
@@ -630,9 +982,27 @@ def _infer_feedback_snapshot_from_body(text: str) -> str:
         )
 
     rating = _detect_english_rating(text)
-    new_this_round = f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
-    rebuttal_source = f"The opposing case missed the main evidence or risk controls behind the {rating} stance."
-    to_verify = f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance."
+    if paraphrase:
+        joined_topics = ", ".join(topics[:3]) if topics else f"the {rating} thesis"
+        new_this_round = f"This round added clearer causality and execution context around {joined_topics}."
+        rebuttal_source = f"It mainly challenged the opposing side for treating {joined_topics} as a one-way risk signal instead of weighing confirmation data and timing."
+        to_verify = f"Next round should verify whether {joined_topics} continue to improve enough to sustain the {rating} stance."
+    else:
+        new_this_round = (
+            _pick_sentence(sentences, ("added", "new", "shifted", "because", "valuation", "demand", "inventory", "orders"))
+            or first
+            or f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
+        )
+        rebuttal_source = (
+            _pick_sentence(sentences, ("rebut", "ignored", "but", "however", "challenge"))
+            or (second if second and second != new_this_round else "")
+            or f"The opposing case missed the main evidence or risk controls behind the {rating} stance."
+        )
+        to_verify = (
+            _pick_sentence(sentences, ("track", "verify", "watch", "wait", "confirm", "monitor"))
+            or (second if second and second != new_this_round else "")
+            or f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance."
+        )
     return (
         "FEEDBACK SNAPSHOT:\n"
         f"- Stance: {rating}\n"
@@ -655,9 +1025,17 @@ def extract_feedback_snapshot(text: str) -> str:
             if _contains_placeholder_snapshot(snapshot):
                 return _infer_feedback_snapshot_from_body(text)
             normalized_snapshot = normalize_chinese_role_terms(snapshot)
-            if _snapshot_has_missing_fields(normalized_snapshot):
-                inferred_snapshot = _infer_feedback_snapshot_from_body(text)
-                return _merge_snapshot_with_inferred(normalized_snapshot, inferred_snapshot)
+            copied_fields = _copied_snapshot_field_keys(normalized_snapshot, text)
+            if _snapshot_has_missing_fields(normalized_snapshot) or copied_fields:
+                inferred_snapshot = _infer_feedback_snapshot_from_body(
+                    text,
+                    paraphrase=bool(copied_fields),
+                )
+                return _merge_snapshot_with_inferred(
+                    normalized_snapshot,
+                    inferred_snapshot,
+                    replacement_fields=copied_fields,
+                )
             return normalized_snapshot
 
     return _infer_feedback_snapshot_from_body(text)
@@ -711,7 +1089,9 @@ def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
     for key, label in zip(field_keys, labels):
         value = fields.get(key, "").strip()
         if value:
-            short = value[:60].rstrip() + ("…" if len(value) > 60 else "")
+            cleaned_value = _strip_snapshot_discourse_openers(value)
+            first_clause = re.split(r"[。；;!?！？]\s*", cleaned_value, maxsplit=1)[0].strip()
+            short = _condense_excerpt(first_clause or cleaned_value, 40)
             lines.append(f"- {label}: {short}")
 
     display = "\n".join(lines) if lines else full_snapshot[:200]

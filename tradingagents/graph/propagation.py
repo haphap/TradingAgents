@@ -34,6 +34,8 @@ class Propagator:
                     "debate_brief": "",
                     "latest_speaker": "",
                     "judge_decision": "",
+                    "judge_snapshot": "",
+                    "judge_snapshot_path": "",
                     "count": 0,
                 }
             ),

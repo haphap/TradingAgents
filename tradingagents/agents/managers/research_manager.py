@@ -3,6 +3,7 @@ from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     extract_feedback_snapshot,
     get_language_instruction,
+    make_display_snapshot,
     get_snapshot_template,
     get_snapshot_writing_instruction,
     load_snapshot_file,
@@ -10,6 +11,8 @@ from tradingagents.agents.utils.agent_utils import (
     localize_rating_term,
     localize_role_name,
     normalize_chinese_role_terms,
+    save_snapshot_file,
+    strip_feedback_snapshot,
     synthesize_side_report,
 )
 from tradingagents.content_utils import extract_text_content
@@ -47,15 +50,25 @@ def create_research_manager(llm, memory):
 
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the {localize_role_name("Bear Analyst")}, the {localize_role_name("Bull Analyst")}, or choose {localize_rating_term("Hold")} only if it is strongly justified based on the arguments presented.
 
-Summarize the key points from both sides concisely, focusing on the most compelling evidence or reasoning. Your recommendation—{localize_rating_term("Buy")}, {localize_rating_term("Sell")}, or {localize_rating_term("Hold")}—must be clear and actionable. Avoid defaulting to {localize_rating_term("Hold")} simply because both sides have valid points; commit to a stance grounded in the debate's strongest arguments.
+Your response must evaluate both sides before giving a position. Do not jump straight to the holding suggestion.
 
-Additionally, develop a detailed investment plan for the trader. This should include:
+Use this exact output order with Markdown headings:
+## {localize_label("Debate Verdict", "辩论裁决")}
+- Judge which side presented the stronger case.
+- Summarize the strongest points from both the {localize_role_name("Bull Analyst")} and the {localize_role_name("Bear Analyst")}.
+- Explicitly point out the decisive weakness in the losing side's case.
 
-Your Recommendation: A decisive stance supported by the most convincing arguments.
-Rationale: An explanation of why these arguments lead to your conclusion.
-Strategic Actions: Concrete steps for implementing the recommendation.
-Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting. 
-After your analysis, append a feedback block in this exact format:
+## {localize_label("Action Logic", "行为逻辑")}
+- Write your own decision logic from evidence to action, not just a repetition of either side.
+- Explain how valuation, catalyst timing, downside boundary, and confirmation / invalidation signals lead to your decision.
+- This section must make clear what would cause you to maintain, add, reduce, or reverse the position.
+
+## {localize_label("Positioning Recommendation", "持仓建议")}
+- Give a clear, actionable recommendation—{localize_rating_term("Buy")}, {localize_rating_term("Sell")}, or {localize_rating_term("Hold")}—grounded in the debate's strongest arguments.
+- Include concrete execution guidance for the trader: entry / add / reduce conditions, risk controls, and what to monitor next.
+
+Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving.
+Only after the three sections above, append a feedback block in this exact format. Do not place the feedback snapshot before the conclusion:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}
 
@@ -77,7 +90,18 @@ Here are your past reflections on mistakes:
         normalized_content = normalize_chinese_role_terms(
             extract_text_content(response.content)
         )
-        judge_snapshot = extract_feedback_snapshot(normalized_content)
+        judge_snapshot_full = extract_feedback_snapshot(normalized_content)
+        debate_round = max(1, investment_debate_state.get("count", 0) // 2)
+        judge_snapshot_path = save_snapshot_file(
+            judge_snapshot_full,
+            "Research Manager",
+            state.get("company_of_interest", "unknown"),
+            state.get("trade_date", "unknown"),
+            debate_round,
+        )
+        judge_snapshot = make_display_snapshot(
+            judge_snapshot_full, judge_snapshot_path
+        )
         updated_brief = build_debate_brief(
             {
                 "Bull Analyst": bull_snapshot_display,
@@ -89,10 +113,12 @@ Here are your past reflections on mistakes:
 
         new_investment_debate_state = {
             "judge_decision": normalized_content,
+            "judge_snapshot": judge_snapshot,
+            "judge_snapshot_path": judge_snapshot_path,
             "history": investment_debate_state.get("history", ""),
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": normalized_content,
+            "current_response": strip_feedback_snapshot(normalized_content),
             "current_bull_response": investment_debate_state.get("current_bull_response", ""),
             "current_bear_response": investment_debate_state.get("current_bear_response", ""),
             "bull_snapshot": bull_snapshot_display,
