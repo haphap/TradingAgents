@@ -80,7 +80,11 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
             latest_speaker="Bull Analyst",
         )
 
-        self.assertIn("Current thesis", snapshot)
+        self.assertIn("- Stance: Bull case improved.", snapshot)
+        self.assertIn("- New this round & rebuttal:", snapshot)
+        self.assertIn("Margin outlook improved.", snapshot)
+        self.assertIn("Earnings beat.", snapshot)
+        self.assertIn("Bear margin fears are weaker.", snapshot)
         self.assertEqual(body, "Argument body here.")
         self.assertIn("Latest update came from: Bull Analyst", brief)
         self.assertIn("Bull Analyst latest snapshot", brief)
@@ -121,7 +125,11 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         snapshot = extract_feedback_snapshot(response)
         body = strip_feedback_snapshot(response)
 
-        self.assertIn("当前观点", snapshot)
+        self.assertIn("- 立场: 多头逻辑增强。", snapshot)
+        self.assertIn("- 本轮新增与反驳:", snapshot)
+        self.assertIn("利润率预期改善", snapshot)
+        self.assertIn("财报超预期", snapshot)
+        self.assertIn("空头对利润率的担忧减弱", snapshot)
         self.assertEqual(body, "论证正文。")
 
     def test_analyst_decision_summary_helpers_strip_markdown_block(self):
@@ -230,12 +238,11 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         snapshot = extract_feedback_snapshot(response)
 
         self.assertIn("- 立场: 持有", snapshot)
-        self.assertIn("- 本轮新增:", snapshot)
+        self.assertIn("- 本轮新增与反驳:", snapshot)
         self.assertIn("高估值消化能力", snapshot)
-        self.assertIn("- 关键反驳:", snapshot)
         self.assertIn("- 待验证:", snapshot)
         self.assertNotIn("- 立场: \n", snapshot)
-        self.assertNotIn("- 关键反驳: \n", snapshot)
+        self.assertNotIn("- 本轮新增与反驳: \n", snapshot)
 
     def test_feedback_snapshot_detects_explicit_chinese_rating_terms(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -339,9 +346,8 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         self.assertNotIn("投资决策的理性框架", snapshot)
         self.assertNotIn("我理解你对宁德时代当前估值和地缘政治风险的担忧", snapshot)
-        self.assertIn("- 本轮新增:", snapshot)
-        self.assertIn("- 关键反驳:", snapshot)
-        self.assertIn("重点反驳了对手", snapshot)
+        self.assertIn("- 本轮新增与反驳:", snapshot)
+        self.assertIn("并据此反驳对手", snapshot)
         self.assertIn("- 待验证: 下一轮继续跟踪", snapshot)
 
     def test_make_display_snapshot_uses_clean_clause_instead_of_raw_truncation(self):
@@ -388,8 +394,8 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         snapshot = extract_feedback_snapshot(response)
 
         self.assertIn("订单锁定率", snapshot)
-        self.assertIn("- 关键反驳:", snapshot)
-        self.assertIn("重点反驳了对手把", snapshot)
+        self.assertIn("- 本轮新增与反驳:", snapshot)
+        self.assertIn("风险外推过度", snapshot)
 
     def test_feedback_snapshot_prefers_risk_recommendation_for_risk_debate_body(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)

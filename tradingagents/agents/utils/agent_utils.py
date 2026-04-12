@@ -91,14 +91,12 @@ def get_snapshot_template(round_index: int = 1) -> str:
     if _is_chinese_output():
         return """反馈快照:
 - 立场:
-- 本轮新增:
-- 关键反驳:
+- 本轮新增与反驳:
 - 待验证:"""
 
     return """FEEDBACK SNAPSHOT:
 - Stance:
-- New this round:
-- Key rebuttal:
+- New this round & rebuttal:
 - To verify:"""
 
 
@@ -110,19 +108,17 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
             "「立场」：明确评级 + 核心理由 + 当前最关键的支撑或风险因素。"
             "如「维持减持——30倍PE在商品周期顶部严重透支，MACD死叉确认趋势转弱，"
             "36元支撑位一旦击穿将触发止损盘连锁卖出，下行目标看至32元」；\n\n"
-            "「本轮新增」：【仅】记录本轮首次提出、上轮快照尚未出现的新论点，展开说明其逻辑和数据依据。"
-            "若本轮引入了新数据，说明该数据的含义及其对投资判断的影响；"
-            "若上轮已提过某论点，本轮必须写不同内容（如本轮对该论点的量化更新或新维度）；\n\n"
-            "「关键反驳」：必须针对对手【本轮最新发表的具体论点】，展开说明逻辑漏洞。"
-            "格式：「[对手角色]本轮提出[具体主张+数据]，但[我方反驳]：[反驳逻辑链]，"
-            "因此其[推论]难以成立」。每轮对手论点不同，反驳必须随之更新，严禁与上轮重复；\n\n"
+            "「本轮新增与反驳」：把本轮新增的信息增量与它对对手观点的冲击合并写成一个连贯段落。"
+            "先写本轮首次提出的新证据、新逻辑或新数据，再明确说明它如何削弱对手【本轮最新主张】。"
+            "若本轮引入了新数据，必须解释该数据的含义、为何改变判断，以及它为什么让对手推论难以成立；"
+            "若本轮没有新增数据，也要写出本轮最关键的增量判断，并顺带点明它反驳了对手的哪一点；\n\n"
             "「待验证」：列出2-3个下轮需跟踪的具体指标或事件，说明每个指标的阈值和触发含义。"
             "如「①金价能否守稳4800美元——若跌破则确认地缘溢价消退，黄金收益贡献将从30%缩水至15%；"
             "②Q2铜价走势——若跌破8000美元/吨则62%利润增速将面临均值回归压力；"
             "③6月美联储议息——若维持高利率则紫金美元债务成本上升0.3-0.5个百分点」；\n\n"
-            "【关键约束】：将你的上轮快照与本轮快照逐字段对比，确保「本轮新增」和「关键反驳」"
-            "有实质性差异，否则视为无效快照。\n"
-            "严禁开场白，严禁重复角色名，四项内容各不相同。"
+            "【关键约束】：将你的上轮快照与本轮快照逐字段对比，确保「本轮新增与反驳」"
+            "体现了本轮独有的信息增量，而不是复制正文或机械重复上轮表述。\n"
+            "严禁开场白，严禁重复角色名，三项内容各不相同。"
         )
     return (
         "The feedback snapshot is a detailed, well-supported record of this round's key content. "
@@ -131,20 +127,15 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         "'Stance': rating + core rationale + the single most critical supporting or risk factor right now. "
         "e.g. 'Maintain Sell — 30x PE at the top of a commodity cycle is severely stretched; "
         "MACD death cross confirms trend weakening; if $36 support breaks, stop-loss cascade targets $32';\n\n"
-        "'New this round': record ONLY arguments introduced for the FIRST TIME this round "
-        "that did NOT appear in the previous snapshot. Expand on the logic and data behind it. "
-        "If new data was introduced, explain its significance for the investment thesis. "
-        "If the previous snapshot already covered a point, write something substantively different;\n\n"
-        "'Key rebuttal': MUST target the opponent's specific argument from THIS round. "
-        "Format: '[Opponent] argued this round that [specific claim + data], but [rebuttal]: "
-        "[logic chain explaining the flaw], so their conclusion that [Y] does not hold.' "
-        "The opponent's argument changes each round — so must this field;\n\n"
+        "'New this round & rebuttal': merge the incremental content and the rebuttal into one coherent field. "
+        "First state the genuinely new evidence, framing, or data introduced this round, then explain how it weakens "
+        "the opponent's latest claim. If a new metric appears, explain why it matters and why it undermines the opposing inference;\n\n"
         "'To verify': 2-3 specific indicators or events with thresholds and trigger meanings. "
         "e.g. '① Copper holding above $8,000 — if it breaks, 62% profit growth faces mean-reversion; "
         "② Fed June decision — if rates held, USD debt cost rises 30-50bps; "
         "③ Q2 earnings capex — if above $5B, confirms sustainable expansion thesis'.\n\n"
         "KEY CONSTRAINT: Compare previous snapshot with this one field by field — "
-        "'New this round' and 'Key rebuttal' must differ substantively from the previous round.\n"
+        "'New this round & rebuttal' must contain real incremental content instead of copied body text or repeated phrasing.\n"
         "No greetings. No role names. No two fields alike."
     )
 
@@ -598,18 +589,46 @@ def _contains_placeholder_snapshot(snapshot: str) -> bool:
     return any(token in snapshot for token in placeholders)
 
 
-def _snapshot_field_labels() -> list[str]:
-    if _is_chinese_output():
-        return ["立场", "本轮新增", "关键反驳", "待验证"]
-    return ["Stance", "New this round", "Key rebuttal", "To verify"]
+def _snapshot_output_is_chinese(chinese: bool | None = None) -> bool:
+    return _is_chinese_output() if chinese is None else chinese
+
+
+def _snapshot_uses_chinese(snapshot: str) -> bool:
+    if SNAPSHOT_MARKERS[1] in snapshot:
+        return True
+    if SNAPSHOT_MARKERS[0] in snapshot:
+        return False
+    if re.search(r"- (?:立场|本轮新增与反驳|本轮新增|发生了什么变化|为什么变化|关键反驳|待验证|下一轮教训):", snapshot):
+        return True
+    if re.search(r"- (?:Stance|Current thesis|New this round & rebuttal|New this round|What changed|Why it changed|Key rebuttal|To verify|Lesson for next round):", snapshot):
+        return False
+    return _is_chinese_output()
+
+
+def _snapshot_field_labels(chinese: bool | None = None) -> list[str]:
+    if _snapshot_output_is_chinese(chinese):
+        return ["立场", "本轮新增与反驳", "待验证"]
+    return ["Stance", "New this round & rebuttal", "To verify"]
 
 
 def _snapshot_field_aliases() -> dict[str, tuple[str, ...]]:
     return {
         # primary label first; legacy labels kept for backward-compatible parsing
         "stance": ("立场", "Stance", "当前观点", "Current thesis"),
-        "new_this_round": ("本轮新增", "New this round", "发生了什么变化", "What changed", "为什么变化", "Why it changed"),
-        "key_rebuttal": ("关键反驳", "Key rebuttal"),
+        "new_and_rebuttal": (
+            "本轮新增与反驳",
+            "New this round & rebuttal",
+            "本轮新增/反驳",
+            "New this round / rebuttal",
+            "本轮新增",
+            "New this round",
+            "发生了什么变化",
+            "What changed",
+            "为什么变化",
+            "Why it changed",
+            "关键反驳",
+            "Key rebuttal",
+        ),
         "to_verify": ("待验证", "To verify", "下一轮教训", "Lesson for next round"),
     }
 
@@ -828,6 +847,7 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
     if not snapshot:
         return fields
 
+    chinese_snapshot = _snapshot_uses_chinese(snapshot)
     current_key = None
     for line in snapshot.splitlines():
         stripped = line.strip()
@@ -836,7 +856,12 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
             for label in aliases:
                 prefix = f"- {label}:"
                 if stripped.startswith(prefix):
-                    fields[field_key] = stripped[len(prefix):].strip()
+                    new_value = stripped[len(prefix):].strip()
+                    fields[field_key] = _merge_snapshot_field_values(
+                        fields[field_key],
+                        new_value,
+                        chinese_snapshot,
+                    )
                     current_key = field_key
                     matched = True
                     break
@@ -850,6 +875,16 @@ def _parse_snapshot_fields(snapshot: str) -> dict[str, str]:
     for key in fields:
         fields[key] = _strip_any_role_prefix_from_value(fields[key])
     return fields
+
+
+def _format_snapshot_from_fields(fields: dict[str, str], chinese: bool | None = None) -> str:
+    title = SNAPSHOT_MARKERS[1] if _snapshot_output_is_chinese(chinese) else SNAPSHOT_MARKERS[0]
+    labels = _snapshot_field_labels(chinese)
+    lines = [title]
+    for field_key, label in zip(_snapshot_field_aliases().keys(), labels):
+        value = fields.get(field_key, "").strip()
+        lines.append(f"- {label}: {value}")
+    return "\n".join(lines)
 
 
 def _snapshot_has_missing_fields(snapshot: str) -> bool:
@@ -867,13 +902,14 @@ def _merge_snapshot_with_inferred(
     snapshot: str,
     inferred_snapshot: str,
     replacement_fields: set[str] | None = None,
+    chinese: bool | None = None,
 ) -> str:
     explicit = _parse_snapshot_fields(snapshot)
     inferred = _parse_snapshot_fields(inferred_snapshot)
     replacement_fields = replacement_fields or set()
 
-    lines = [SNAPSHOT_MARKERS[1] if _is_chinese_output() else SNAPSHOT_MARKERS[0]]
-    display_labels = _snapshot_field_labels()
+    lines = [SNAPSHOT_MARKERS[1] if _snapshot_output_is_chinese(chinese) else SNAPSHOT_MARKERS[0]]
+    display_labels = _snapshot_field_labels(chinese)
     for field_key, label in zip(_snapshot_field_aliases().keys(), display_labels):
         value = explicit.get(field_key, "").strip()
         if (
@@ -945,6 +981,39 @@ def _snapshot_fields_substantially_overlap(left: str, right: str) -> bool:
 
     prefix_len = min(len(shorter), len(longer), 60)
     return prefix_len >= 36 and shorter[:prefix_len] == longer[:prefix_len]
+
+
+def _snapshot_values_are_near_duplicates(left: str, right: str) -> bool:
+    normalized_left = _normalize_overlap_text(_strip_snapshot_discourse_openers(left))
+    normalized_right = _normalize_overlap_text(_strip_snapshot_discourse_openers(right))
+    if not normalized_left or not normalized_right:
+        return False
+    if normalized_left == normalized_right:
+        return True
+
+    shorter, longer = sorted((normalized_left, normalized_right), key=len)
+    if len(shorter) >= 24 and shorter in longer and len(shorter) >= int(len(longer) * 0.7):
+        return True
+
+    similarity = SequenceMatcher(
+        None,
+        normalized_left[:800],
+        normalized_right[:800],
+    ).ratio()
+    return similarity >= 0.88
+
+
+def _merge_snapshot_field_values(existing_value: str, new_value: str, chinese_snapshot: bool) -> str:
+    existing_value = existing_value.strip()
+    new_value = new_value.strip()
+    if not existing_value:
+        return new_value
+    if not new_value:
+        return existing_value
+    if _snapshot_values_are_near_duplicates(existing_value, new_value):
+        return existing_value if len(existing_value) >= len(new_value) else new_value
+    separator = "；" if chinese_snapshot else "; "
+    return f"{existing_value}{separator}{new_value}"
 
 
 def _looks_like_snapshot_rebuttal(value: str) -> bool:
@@ -1021,22 +1090,14 @@ def _snapshot_replacement_fields(snapshot: str, source_text: str) -> set[str]:
     fields = _parse_snapshot_fields(snapshot)
     replacement_fields = set(_copied_snapshot_field_keys(snapshot, source_text))
 
-    new_this_round = fields.get("new_this_round", "")
-    key_rebuttal = fields.get("key_rebuttal", "")
+    new_and_rebuttal = fields.get("new_and_rebuttal", "")
     to_verify = fields.get("to_verify", "")
 
-    if _snapshot_fields_substantially_overlap(new_this_round, key_rebuttal):
-        replacement_fields.add("key_rebuttal")
-    if (
-        _snapshot_fields_substantially_overlap(new_this_round, to_verify)
-        or _snapshot_fields_substantially_overlap(key_rebuttal, to_verify)
-    ):
+    if _snapshot_fields_substantially_overlap(new_and_rebuttal, to_verify):
         replacement_fields.add("to_verify")
 
-    if new_this_round and not _looks_like_snapshot_new_content(new_this_round):
-        replacement_fields.add("new_this_round")
-    if key_rebuttal and not _looks_like_snapshot_rebuttal(key_rebuttal):
-        replacement_fields.add("key_rebuttal")
+    if new_and_rebuttal and not _looks_like_snapshot_new_content(new_and_rebuttal):
+        replacement_fields.add("new_and_rebuttal")
     if to_verify and not _looks_like_snapshot_verification(to_verify):
         replacement_fields.add("to_verify")
 
@@ -1060,25 +1121,26 @@ def is_feedback_snapshot_inferred(text: str) -> bool:
     return True
 
 
-def _extract_snapshot_topics(body: str) -> list[str]:
+def _extract_snapshot_topics(body: str, chinese: bool | None = None) -> list[str]:
     topics = []
+    use_chinese = _snapshot_output_is_chinese(chinese)
     patterns = (
-        (r"库存|存货", "库存与备货压力" if _is_chinese_output() else "inventory positioning"),
-        (r"需求|订单|出货", "需求与订单兑现" if _is_chinese_output() else "demand and order conversion"),
-        (r"金价|黄金", "金价走势" if _is_chinese_output() else "gold price trend"),
-        (r"并购|收购|整合", "并购进度" if _is_chinese_output() else "M&A execution"),
-        (r"地缘|关税|出口|海外", "地缘与海外政策风险" if _is_chinese_output() else "geopolitical and export-policy risk"),
-        (r"价格战|定价权", "价格战下的定价权" if _is_chinese_output() else "pricing power through the price war"),
-        (r"财报|业绩|一季报|q[1-4]", "业绩验证" if _is_chinese_output() else "earnings confirmation"),
-        (r"储能", "储能需求兑现" if _is_chinese_output() else "storage-demand conversion"),
-        (r"1\.6t|良率", "1.6T良率爬坡" if _is_chinese_output() else "1.6T yield ramp"),
-        (r"估值|pe|市盈率", "高估值消化能力" if _is_chinese_output() else "valuation absorption"),
-        (r"毛利率|利润率", "毛利率变化" if _is_chinese_output() else "margin trend"),
-        (r"支撑|底部|macd|金叉|死叉", "技术支撑与动量修复" if _is_chinese_output() else "technical support and momentum repair"),
-        (r"成交量|量能|放量|缩量|vwma", "量能确认" if _is_chinese_output() else "volume confirmation"),
-        (r"情绪|热度|社交媒体|抢筹", "情绪热度" if _is_chinese_output() else "sentiment heat"),
-        (r"资本开支|capex", "资本开支验证" if _is_chinese_output() else "capex follow-through"),
-        (r"波动|atr|止损", "波动率与止损边界" if _is_chinese_output() else "volatility and stop-loss bands"),
+        (r"库存|存货", "库存与备货压力" if use_chinese else "inventory positioning"),
+        (r"需求|订单|出货", "需求与订单兑现" if use_chinese else "demand and order conversion"),
+        (r"金价|黄金", "金价走势" if use_chinese else "gold price trend"),
+        (r"并购|收购|整合", "并购进度" if use_chinese else "M&A execution"),
+        (r"地缘|关税|出口|海外", "地缘与海外政策风险" if use_chinese else "geopolitical and export-policy risk"),
+        (r"价格战|定价权", "价格战下的定价权" if use_chinese else "pricing power through the price war"),
+        (r"财报|业绩|一季报|q[1-4]", "业绩验证" if use_chinese else "earnings confirmation"),
+        (r"储能", "储能需求兑现" if use_chinese else "storage-demand conversion"),
+        (r"1\.6t|良率", "1.6T良率爬坡" if use_chinese else "1.6T yield ramp"),
+        (r"估值|pe|市盈率", "高估值消化能力" if use_chinese else "valuation absorption"),
+        (r"毛利率|利润率", "毛利率变化" if use_chinese else "margin trend"),
+        (r"支撑|底部|macd|金叉|死叉", "技术支撑与动量修复" if use_chinese else "technical support and momentum repair"),
+        (r"成交量|量能|放量|缩量|vwma", "量能确认" if use_chinese else "volume confirmation"),
+        (r"情绪|热度|社交媒体|抢筹", "情绪热度" if use_chinese else "sentiment heat"),
+        (r"资本开支|capex", "资本开支验证" if use_chinese else "capex follow-through"),
+        (r"波动|atr|止损", "波动率与止损边界" if use_chinese else "volatility and stop-loss bands"),
     )
     lowered = body.lower()
     for pattern, topic in patterns:
@@ -1087,7 +1149,11 @@ def _extract_snapshot_topics(body: str) -> list[str]:
     return topics
 
 
-def _infer_feedback_snapshot_from_body(text: str, paraphrase: bool = False) -> str:
+def _infer_feedback_snapshot_from_body(
+    text: str,
+    paraphrase: bool = False,
+    chinese: bool | None = None,
+) -> str:
     body = _strip_snapshot_discourse_openers(
         normalize_chinese_role_terms(
             strip_analyst_decision_summary(strip_feedback_snapshot(text))
@@ -1096,67 +1162,60 @@ def _infer_feedback_snapshot_from_body(text: str, paraphrase: bool = False) -> s
     sentences = _extract_sentences(body)
     first = _condense_excerpt(sentences[0], 120) if sentences else _condense_excerpt(body, 120)
     second = _condense_excerpt(sentences[1], 120) if len(sentences) > 1 else first
-    topics = _extract_snapshot_topics(body)
+    use_chinese = _snapshot_output_is_chinese(chinese)
+    topics = _extract_snapshot_topics(body, chinese=use_chinese)
 
-    if _is_chinese_output():
+    if use_chinese:
         rating = _detect_risk_stance(text) or _detect_chinese_rating(text)
         if paraphrase:
             joined_topics = "、".join(topics[:3]) if topics else f"“{rating}”逻辑"
             follow_up_topics = "、".join(topics[:3]) if topics else "关键数据与风险触发条件"
-            new_this_round = f"本轮新增了对{joined_topics}的归因和执行含义说明，把这些信号如何支撑“{rating}”判断的传导链条补充得更完整。"
-            rebuttal_source = f"重点反驳了对手把{joined_topics}线性等同于单边风险的推断，指出还需结合兑现节奏、盈利韧性和价格信号综合判断，因此其结论并不充分。"
+            new_and_rebuttal = (
+                f"本轮新增了对{joined_topics}的归因和执行含义说明，并据此反驳对手把这些信号"
+                f"线性等同于单边风险的推断，说明其结论仍需结合兑现节奏、盈利韧性和价格信号综合判断。"
+            )
             to_verify = f"下一轮继续跟踪{follow_up_topics}这几项指标是否同步验证；若关键数据没有改善，就需要重新评估“{rating}”判断。"
         else:
-            new_this_round = (
+            new_and_rebuttal = (
                 _pick_sentence(sentences, ("新增", "补充", "转向", "强调", "原因", "估值", "库存", "需求", "订单"))
                 or first
                 or f"本轮围绕“{rating}”补充了关键证据、风险边界和执行依据。"
             )
-            rebuttal_source = (
-                _pick_sentence(sentences, ("反驳", "忽略", "但是", "但", "然而", "质疑"))
-                or (second if second and second != new_this_round else "")
-                or f"对手忽略了影响“{rating}”判断的关键数据或风险约束。"
-            )
             to_verify = (
                 _pick_sentence(sentences, ("跟踪", "验证", "观察", "等待", "确认", "关注"))
-                or (second if second and second != new_this_round else "")
+                or (second if second and second != new_and_rebuttal else "")
                 or f"下一轮验证支持“{rating}”的关键数据和风险触发条件。"
             )
         return (
             "反馈快照:\n"
             f"- 立场: {rating}\n"
-            f"- 本轮新增: {new_this_round}\n"
-            f"- 关键反驳: {rebuttal_source}\n"
+            f"- 本轮新增与反驳: {new_and_rebuttal}\n"
             f"- 待验证: {to_verify}"
         )
 
     rating = _detect_english_rating(text)
     if paraphrase:
         joined_topics = ", ".join(topics[:3]) if topics else f"the {rating} thesis"
-        new_this_round = f"This round added clearer causality and execution context around {joined_topics}."
-        rebuttal_source = f"It mainly challenged the opposing side for treating {joined_topics} as a one-way risk signal instead of weighing confirmation data and timing."
+        new_and_rebuttal = (
+            f"This round added clearer causality and execution context around {joined_topics}, and used that"
+            f" incremental evidence to challenge the opposing side's one-way risk interpretation."
+        )
         to_verify = f"Next round should verify whether {joined_topics} continue to improve enough to sustain the {rating} stance."
     else:
-        new_this_round = (
+        new_and_rebuttal = (
             _pick_sentence(sentences, ("added", "new", "shifted", "because", "valuation", "demand", "inventory", "orders"))
             or first
             or f"Added key evidence, risk boundaries, and execution rationale behind the {rating} call."
         )
-        rebuttal_source = (
-            _pick_sentence(sentences, ("rebut", "ignored", "but", "however", "challenge"))
-            or (second if second and second != new_this_round else "")
-            or f"The opposing case missed the main evidence or risk controls behind the {rating} stance."
-        )
         to_verify = (
             _pick_sentence(sentences, ("track", "verify", "watch", "wait", "confirm", "monitor"))
-            or (second if second and second != new_this_round else "")
+            or (second if second and second != new_and_rebuttal else "")
             or f"Verify core data assumptions, risk triggers, and timing conditions behind the {rating} stance."
         )
     return (
         "FEEDBACK SNAPSHOT:\n"
         f"- Stance: {rating}\n"
-        f"- New this round: {new_this_round}\n"
-        f"- Key rebuttal: {rebuttal_source}\n"
+        f"- New this round & rebuttal: {new_and_rebuttal}\n"
         f"- To verify: {to_verify}"
     )
 
@@ -1164,15 +1223,20 @@ def extract_feedback_snapshot(text: str) -> str:
     """Extract the structured feedback snapshot block from an agent response."""
     if not text:
         if _is_chinese_output():
-            return "反馈快照:\n- 立场: 暂无。\n- 本轮新增: 暂无。\n- 关键反驳: 暂无。\n- 待验证: 暂无。"
-        return "FEEDBACK SNAPSHOT:\n- Stance: None yet.\n- New this round: None yet.\n- Key rebuttal: None yet.\n- To verify: None yet."
+            return "反馈快照:\n- 立场: 暂无。\n- 本轮新增与反驳: 暂无。\n- 待验证: 暂无。"
+        return "FEEDBACK SNAPSHOT:\n- Stance: None yet.\n- New this round & rebuttal: None yet.\n- To verify: None yet."
 
     for marker in SNAPSHOT_MARKERS:
         idx = text.rfind(marker)
         if idx != -1:
             snapshot = text[idx:].strip()
+            source_is_chinese = _snapshot_uses_chinese(snapshot)
             if _contains_placeholder_snapshot(snapshot):
-                return _infer_feedback_snapshot_from_body(text, paraphrase=True)
+                return _infer_feedback_snapshot_from_body(
+                    text,
+                    paraphrase=True,
+                    chinese=source_is_chinese,
+                )
             normalized_snapshot = normalize_chinese_role_terms(snapshot)
             replacement_fields = _snapshot_replacement_fields(normalized_snapshot, text)
             has_missing_fields = _snapshot_has_missing_fields(normalized_snapshot)
@@ -1180,13 +1244,18 @@ def extract_feedback_snapshot(text: str) -> str:
                 inferred_snapshot = _infer_feedback_snapshot_from_body(
                     text,
                     paraphrase=True,
+                    chinese=source_is_chinese,
                 )
                 return _merge_snapshot_with_inferred(
                     normalized_snapshot,
                     inferred_snapshot,
                     replacement_fields=replacement_fields,
+                    chinese=source_is_chinese,
                 )
-            return normalized_snapshot
+            return _format_snapshot_from_fields(
+                _parse_snapshot_fields(normalized_snapshot),
+                chinese=source_is_chinese,
+            )
 
     return _infer_feedback_snapshot_from_body(text, paraphrase=True)
 
@@ -1225,6 +1294,33 @@ def load_snapshot_file(file_path: str) -> str:
         return ""
 
 
+def _clean_snapshot_display_value(value: str) -> str:
+    if not value:
+        return ""
+
+    if "；" in value:
+        separator = "；"
+        segments = value.split("；")
+    elif ";" in value:
+        separator = "; "
+        segments = value.split(";")
+    else:
+        separator = ""
+        segments = [value]
+
+    cleaned_segments = []
+    for segment in segments:
+        cleaned = _strip_snapshot_discourse_openers(segment.strip())
+        if cleaned:
+            cleaned_segments.append(cleaned)
+
+    if not cleaned_segments:
+        return ""
+    if not separator:
+        return cleaned_segments[0]
+    return separator.join(cleaned_segments)
+
+
 def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
     """Create a brief inline display of the snapshot with a link to the full file.
 
@@ -1238,7 +1334,7 @@ def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
     for key, label in zip(field_keys, labels):
         value = fields.get(key, "").strip()
         if value:
-            cleaned_value = _strip_snapshot_discourse_openers(value)
+            cleaned_value = _clean_snapshot_display_value(value)
             lines.append(f"- {label}: {cleaned_value}")
 
     display = "\n".join(lines) if lines else full_snapshot[:200]
