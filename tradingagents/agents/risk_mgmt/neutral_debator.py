@@ -2,6 +2,7 @@ import openai
 from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
+    build_history_turn,
     extract_feedback_snapshot,
     get_language_instruction,
     get_no_greeting_instruction,
@@ -71,7 +72,7 @@ After your normal argument, append an exact block using this template:
                 extract_text_content(response.content)
             )
             argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Neutral Analyst")
-            argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
+            history_turn = build_history_turn(raw_content, "Neutral Analyst")
             new_neutral_snapshot_full = extract_feedback_snapshot(raw_content)
             ticker = state.get("company_of_interest", "unknown")
             trade_date = state.get("trade_date", "unknown")
@@ -79,7 +80,7 @@ After your normal argument, append an exact block using this template:
             new_neutral_snapshot = make_display_snapshot(new_neutral_snapshot_full, snapshot_path)
         except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
             argument_body = f"本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
-            argument = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
+            history_turn = f"{localize_role_name('Neutral Analyst')}: {argument_body}"
             new_neutral_snapshot = risk_debate_state.get("neutral_snapshot", "")
             snapshot_path = risk_debate_state.get("neutral_snapshot_path", "")
         new_debate_brief = build_debate_brief(
@@ -92,14 +93,14 @@ After your normal argument, append an exact block using this template:
         )
 
         new_risk_debate_state = {
-            "history": risk_debate_state.get("history", "") + "\n" + argument,
+            "history": risk_debate_state.get("history", "") + "\n" + history_turn,
             "aggressive_history": risk_debate_state.get("aggressive_history", ""),
             "conservative_history": risk_debate_state.get("conservative_history", ""),
-            "neutral_history": neutral_history + "\n" + argument,
+            "neutral_history": neutral_history + "\n" + history_turn,
             "latest_speaker": "Neutral",
             "current_aggressive_response": risk_debate_state.get("current_aggressive_response", ""),
             "current_conservative_response": risk_debate_state.get("current_conservative_response", ""),
-            "current_neutral_response": argument,
+            "current_neutral_response": f"{localize_role_name('Neutral Analyst')}: {argument_body}",
             "aggressive_snapshot": aggressive_snapshot,
             "conservative_snapshot": conservative_snapshot,
             "neutral_snapshot": new_neutral_snapshot,

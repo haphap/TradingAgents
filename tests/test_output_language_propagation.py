@@ -1,6 +1,7 @@
 import copy
 import unittest
 
+from cli.main import format_research_team_history, format_risk_management_history
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
 from tradingagents.agents.researchers.bear_researcher import create_bear_researcher
@@ -121,6 +122,19 @@ class OutputLanguagePropagationTests(unittest.TestCase):
             self.assertIn("反馈快照", prompt)
             self.assertIn("关键约束", prompt)
 
+    def test_research_team_history_keeps_real_snapshot_blocks(self):
+        llm = _CapturingLLM()
+        node = create_bull_researcher(llm, _EmptyMemory())
+
+        investment_debate_state = node(copy.deepcopy(self.base_state))["investment_debate_state"]
+        formatted = format_research_team_history(investment_debate_state)
+
+        self.assertIn("##### 本轮复盘", formatted)
+        self.assertNotIn("##### 自动复盘", formatted)
+        self.assertIn("- 立场: x", formatted)
+        self.assertIn("- 本轮新增与反驳: y；z；r", formatted)
+        self.assertNotIn("反馈快照", investment_debate_state["current_bull_response"])
+
     def test_normalize_chinese_role_terms_replaces_bull_bear_variants(self):
         text = "我是熊派分析师，也不同意牛派分析师和熊派投资者的说法。"
         normalized = normalize_chinese_role_terms(text)
@@ -146,6 +160,19 @@ class OutputLanguagePropagationTests(unittest.TestCase):
             self.assertIn("Write your entire response in Chinese.", prompt)
             self.assertIn("反馈快照", prompt)
             self.assertIn("关键约束", prompt)
+
+    def test_risk_team_history_keeps_real_snapshot_blocks(self):
+        llm = _CapturingLLM()
+        node = create_aggressive_debator(llm)
+
+        risk_debate_state = node(copy.deepcopy(self.base_state))["risk_debate_state"]
+        formatted = format_risk_management_history(risk_debate_state)
+
+        self.assertIn("##### 本轮复盘", formatted)
+        self.assertNotIn("##### 自动复盘", formatted)
+        self.assertIn("- 立场: x", formatted)
+        self.assertIn("- 本轮新增与反驳: y；z；r", formatted)
+        self.assertNotIn("反馈快照", risk_debate_state["current_aggressive_response"])
 
     def test_portfolio_manager_prompt_respects_output_language(self):
         llm = _CapturingLLM()

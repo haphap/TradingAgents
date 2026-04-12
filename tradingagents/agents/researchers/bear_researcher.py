@@ -2,6 +2,7 @@ import openai
 from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
+    build_history_turn,
     extract_feedback_snapshot,
     get_analyst_decision_instruction,
     get_analyst_decision_template,
@@ -86,12 +87,11 @@ After the decision summary, append an exact feedback snapshot block using this t
             )
             raw_content = fallback
 
-        argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Bear Analyst")
         visible_argument_body = strip_role_prefix(
             strip_analyst_decision_summary(strip_feedback_snapshot(raw_content)),
             "Bear Analyst",
         )
-        argument = f"{localize_role_name('Bear Analyst')}: {argument_body}"
+        history_turn = build_history_turn(raw_content, "Bear Analyst")
         new_bear_snapshot_full = extract_feedback_snapshot(raw_content)
 
         ticker = state.get("company_of_interest", "unknown")
@@ -108,8 +108,8 @@ After the decision summary, append an exact feedback snapshot block using this t
         )
 
         new_investment_debate_state = {
-            "history": investment_debate_state.get("history", "") + "\n" + argument,
-            "bear_history": bear_history + "\n" + argument,
+            "history": investment_debate_state.get("history", "") + "\n" + history_turn,
+            "bear_history": bear_history + "\n" + history_turn,
             "bull_history": investment_debate_state.get("bull_history", ""),
             "current_response": f"{localize_role_name('Bear Analyst')}: {visible_argument_body}",
             "current_bear_response": f"{localize_role_name('Bear Analyst')}: {visible_argument_body}",

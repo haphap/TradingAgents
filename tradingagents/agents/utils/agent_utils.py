@@ -1344,6 +1344,15 @@ def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
     return display
 
 
+def build_history_turn(raw_content: str, role: str) -> str:
+    """Preserve the visible turn content, including structured blocks, for round history."""
+    cleaned = strip_role_prefix((raw_content or "").strip(), role)
+    speaker = localize_role_name(role)
+    if not cleaned:
+        return f"{speaker}:"
+    return f"{speaker}: {cleaned}"
+
+
 def strip_role_prefix(text: str, role: str) -> str:
     """Remove self-labeling role prefixes that the LLM may inject.
 

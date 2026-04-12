@@ -2,6 +2,7 @@ import openai
 from tradingagents.content_utils import extract_text_content
 from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
+    build_history_turn,
     extract_feedback_snapshot,
     get_language_instruction,
     get_no_greeting_instruction,
@@ -71,7 +72,7 @@ After your normal argument, append an exact block using this template:
                 extract_text_content(response.content)
             )
             argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Aggressive Analyst")
-            argument = f"{localize_role_name('Aggressive Analyst')}: {argument_body}"
+            history_turn = build_history_turn(raw_content, "Aggressive Analyst")
             new_aggressive_snapshot_full = extract_feedback_snapshot(raw_content)
             ticker = state.get("company_of_interest", "unknown")
             trade_date = state.get("trade_date", "unknown")
@@ -79,7 +80,7 @@ After your normal argument, append an exact block using this template:
             new_aggressive_snapshot = make_display_snapshot(new_aggressive_snapshot_full, snapshot_path)
         except (openai.InternalServerError, openai.APIError, openai.APIConnectionError) as e:
             argument_body = f"本轮因服务器错误未能生成论点（{type(e).__name__}），维持上轮立场。"
-            argument = f"{localize_role_name('Aggressive Analyst')}: {argument_body}"
+            history_turn = f"{localize_role_name('Aggressive Analyst')}: {argument_body}"
             new_aggressive_snapshot = risk_debate_state.get("aggressive_snapshot", "")
             snapshot_path = risk_debate_state.get("aggressive_snapshot_path", "")
         new_debate_brief = build_debate_brief(
@@ -92,12 +93,12 @@ After your normal argument, append an exact block using this template:
         )
 
         new_risk_debate_state = {
-            "history": risk_debate_state.get("history", "") + "\n" + argument,
-            "aggressive_history": aggressive_history + "\n" + argument,
+            "history": risk_debate_state.get("history", "") + "\n" + history_turn,
+            "aggressive_history": aggressive_history + "\n" + history_turn,
             "conservative_history": risk_debate_state.get("conservative_history", ""),
             "neutral_history": risk_debate_state.get("neutral_history", ""),
             "latest_speaker": "Aggressive",
-            "current_aggressive_response": argument,
+            "current_aggressive_response": f"{localize_role_name('Aggressive Analyst')}: {argument_body}",
             "current_conservative_response": risk_debate_state.get("current_conservative_response", ""),
             "current_neutral_response": risk_debate_state.get("current_neutral_response", ""),
             "aggressive_snapshot": new_aggressive_snapshot,
