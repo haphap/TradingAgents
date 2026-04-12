@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, RemoveMessage
+from difflib import SequenceMatcher
 import os
 import re
 
@@ -419,6 +420,11 @@ CHINESE_RATING_EXPLICIT_PATTERNS = [
     ("持有", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**持有\**")),
     ("减持", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**减持\**")),
     ("卖出", re.compile(r"(?:最终交易建议|评级)\s*[:：]\s*\**卖出\**")),
+    ("买入", re.compile(r"(?:立场|当前观点)\s*[:：]\s*\**买入(?:/增持)?\**")),
+    ("增持", re.compile(r"(?:立场|当前观点)\s*[:：]\s*\**增持(?:/买入)?\**")),
+    ("持有", re.compile(r"(?:立场|当前观点)\s*[:：]\s*\**持有\**")),
+    ("减持", re.compile(r"(?:立场|当前观点)\s*[:：]\s*\**减持\**")),
+    ("卖出", re.compile(r"(?:立场|当前观点)\s*[:：]\s*\**卖出\**")),
     ("买入", re.compile(r"(?:建议|维持|转为)\s*买入")),
     ("增持", re.compile(r"(?:建议|维持|转为)\s*增持")),
     ("持有", re.compile(r"(?:建议|维持|转为)\s*持有")),
@@ -441,6 +447,11 @@ ENGLISH_RATING_EXPLICIT_PATTERNS = [
     ("HOLD", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**hold\**", re.IGNORECASE)),
     ("OVERWEIGHT", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**overweight\**", re.IGNORECASE)),
     ("BUY", re.compile(r"(?:final transaction proposal|rating)\s*:\s*\**buy\**", re.IGNORECASE)),
+    ("BUY", re.compile(r"(?:stance|current thesis)\s*:\s*\**buy(?:/overweight)?\**", re.IGNORECASE)),
+    ("OVERWEIGHT", re.compile(r"(?:stance|current thesis)\s*:\s*\**overweight(?:/buy)?\**", re.IGNORECASE)),
+    ("HOLD", re.compile(r"(?:stance|current thesis)\s*:\s*\**hold\**", re.IGNORECASE)),
+    ("UNDERWEIGHT", re.compile(r"(?:stance|current thesis)\s*:\s*\**underweight\**", re.IGNORECASE)),
+    ("SELL", re.compile(r"(?:stance|current thesis)\s*:\s*\**sell\**", re.IGNORECASE)),
     ("SELL", re.compile(r"(?:recommend|maintain|shift to|move to)\s+sell", re.IGNORECASE)),
     ("UNDERWEIGHT", re.compile(r"(?:recommend|maintain|shift to|move to)\s+underweight", re.IGNORECASE)),
     ("HOLD", re.compile(r"(?:recommend|maintain|shift to|move to)\s+hold", re.IGNORECASE)),
@@ -912,6 +923,26 @@ def _snapshot_fields_substantially_overlap(left: str, right: str) -> bool:
     if len(shorter) >= 30 and shorter in longer:
         return True
 
+    similarity = SequenceMatcher(
+        None,
+        normalized_left[:800],
+        normalized_right[:800],
+    ).ratio()
+    if similarity >= 0.72:
+        return True
+
+    left_topics = set(_extract_snapshot_topics(left))
+    right_topics = set(_extract_snapshot_topics(right))
+    shared_topics = left_topics & right_topics
+
+    number_pattern = r"\d+(?:\.\d+)?(?:%|％|亿|万|元|天)?"
+    left_numbers = set(re.findall(number_pattern, left))
+    right_numbers = set(re.findall(number_pattern, right))
+    shared_numbers = left_numbers & right_numbers
+
+    if shared_topics and shared_numbers:
+        return True
+
     prefix_len = min(len(shorter), len(longer), 60)
     return prefix_len >= 36 and shorter[:prefix_len] == longer[:prefix_len]
 
@@ -932,6 +963,30 @@ def _looks_like_snapshot_rebuttal(value: str) -> bool:
     )
     lowered = normalized.lower()
     return any(keyword in normalized or keyword in lowered for keyword in keywords)
+
+
+def _looks_like_snapshot_new_content(value: str) -> bool:
+    normalized = normalize_chinese_role_terms((value or "").strip())
+    if not normalized:
+        return False
+    if len(normalized) <= 80:
+        return True
+
+    lowered = normalized.lower()
+    bad_starts = (
+        "空头分析师，", "多头分析师，", "激进分析师，", "保守分析师，", "中性分析师，",
+        "bear analyst,", "bull analyst,", "aggressive analyst,", "conservative analyst,",
+        "neutral analyst,",
+        "我理解你对", "让我用", "各位", "大家", "我们必须",
+    )
+    if any(normalized.startswith(prefix) or lowered.startswith(prefix) for prefix in bad_starts):
+        return False
+
+    discourse_patterns = (
+        r"^.{0,12}(?:分析师|manager)[，,:：]",
+        r"^(?:我理解你对|让我用|各位|大家|首先|总的来说)",
+    )
+    return not any(re.search(pattern, normalized, re.IGNORECASE) for pattern in discourse_patterns)
 
 
 def _looks_like_snapshot_verification(value: str) -> bool:
@@ -971,13 +1026,15 @@ def _snapshot_replacement_fields(snapshot: str, source_text: str) -> set[str]:
     to_verify = fields.get("to_verify", "")
 
     if _snapshot_fields_substantially_overlap(new_this_round, key_rebuttal):
-        replacement_fields.update({"new_this_round", "key_rebuttal"})
+        replacement_fields.add("key_rebuttal")
     if (
         _snapshot_fields_substantially_overlap(new_this_round, to_verify)
         or _snapshot_fields_substantially_overlap(key_rebuttal, to_verify)
     ):
         replacement_fields.add("to_verify")
 
+    if new_this_round and not _looks_like_snapshot_new_content(new_this_round):
+        replacement_fields.add("new_this_round")
     if key_rebuttal and not _looks_like_snapshot_rebuttal(key_rebuttal):
         replacement_fields.add("key_rebuttal")
     if to_verify and not _looks_like_snapshot_verification(to_verify):
@@ -1171,8 +1228,7 @@ def load_snapshot_file(file_path: str) -> str:
 def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
     """Create a brief inline display of the snapshot with a link to the full file.
 
-    Shows the first ~60 characters of each field so the CLI remains readable,
-    while the full detail is accessible via the saved file.
+    Keeps the cleaned field content intact while still linking to the full file.
     """
     fields = _parse_snapshot_fields(full_snapshot)
     labels = _snapshot_field_labels()
@@ -1183,9 +1239,7 @@ def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
         value = fields.get(key, "").strip()
         if value:
             cleaned_value = _strip_snapshot_discourse_openers(value)
-            first_clause = re.split(r"[。；;!?！？]\s*", cleaned_value, maxsplit=1)[0].strip()
-            short = _condense_excerpt(first_clause or cleaned_value, 40)
-            lines.append(f"- {label}: {short}")
+            lines.append(f"- {label}: {cleaned_value}")
 
     display = "\n".join(lines) if lines else full_snapshot[:200]
     if file_path:

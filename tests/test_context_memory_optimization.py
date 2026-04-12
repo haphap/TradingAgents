@@ -362,7 +362,34 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertNotIn("各位，我们必须直面", display)
         self.assertNotIn("首先，对手", display)
         self.assertNotIn("再看技术面", display)
+        self.assertNotIn("...", display)
+        self.assertIn("库存与备货压力其实对应订单前置准备", display)
+        self.assertIn("对手把高估值直接等同于泡沫，但忽略了订单兑现节奏", display)
+        self.assertIn("继续跟踪1.6T良率、订单兑现和量能变化", display)
         self.assertIn("(完整内容见: /tmp/snapshot.md)", display)
+
+    def test_feedback_snapshot_rewrites_quantitatively_overlapping_rebuttal(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "多头分析师: 我本轮首次引入订单锁定率概念，指出2041亿合同负债对945亿存货形成216%的覆盖，"
+            "说明库存并非被动堆积，而是已有订单锁定的交付准备。空头分析师则认为合同负债与存货性质不同，"
+            "预收款高并不等于库存安全，但这种线性推断忽略了交付节奏和产能兑现之间的匹配关系。"
+            "下一轮继续跟踪存货周转天数是否守住97天，以及储能订单的兑现速度。\n\n"
+            "反馈快照:\n"
+            "- 立场: 买入/增持——库存质量优于市场担忧。\n"
+            "- 本轮新增: 首次引入“订单锁定率”概念（合同负债/存货=216%），指出该比率超100%意味着库存已有在手订单覆盖，库存更像交付准备而非滞销积压。\n"
+            "- 关键反驳: [空头分析师]本轮提出2041亿合同负债与945亿存货性质不同、预收款多不等于库存安全，但同一组216%覆盖数据恰恰说明库存与订单绑定程度高，因此其风险外推过度。\n"
+            "- 待验证: ①存货周转天数能否守住97天——若连续两季度突破100天则确认去库存压力；②储能订单兑现节奏。"
+        )
+
+        snapshot = extract_feedback_snapshot(response)
+
+        self.assertIn("订单锁定率", snapshot)
+        self.assertIn("- 关键反驳:", snapshot)
+        self.assertIn("重点反驳了对手把", snapshot)
 
     def test_feedback_snapshot_prefers_risk_recommendation_for_risk_debate_body(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
