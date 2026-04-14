@@ -56,7 +56,7 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         self.assertIn("### 第 1 轮", formatted)
         self.assertIn("#### 多头分析师\n\n多头分析师: 第一轮多头观点", formatted)
-        self.assertIn("##### 本轮复盘\n反馈快照:\n- 立场: 买入", formatted)
+        self.assertIn("反馈快照:\n- 立场: 买入", formatted)
         self.assertIn("- 本轮新增与反驳: 强化多头", formatted)
         self.assertIn("金价走强", formatted)
         self.assertIn("估值担忧可控", formatted)
@@ -81,6 +81,14 @@ class CliRoundFormattingTests(unittest.TestCase):
         risk_state = {
             "aggressive_history": (
                 "Aggressive Analyst: Round 1 aggressive case\n"
+                "DECISION SUMMARY:\n"
+                "- Rating: SELL\n"
+                "- Confidence: 70%\n"
+                "- Time Horizon: 1-3 months\n"
+                "- Key Assumptions:\n"
+                "  1. Momentum remains weak.\n"
+                "  2. Liquidity deteriorates.\n"
+                "  3. No upside catalyst.\n"
                 "FEEDBACK SNAPSHOT:\n"
                 "- Current thesis: Sell\n"
                 "- What changed: More defensive\n"
@@ -114,7 +122,8 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         self.assertIn("### 第 1 轮", formatted)
         self.assertIn("#### 激进分析师\n\nAggressive Analyst: Round 1 aggressive case", formatted)
-        self.assertIn("##### 本轮复盘\nFEEDBACK SNAPSHOT:\n- Stance: Sell", formatted)
+        self.assertIn("决策摘要:\n- 评级: SELL", formatted)
+        self.assertIn("FEEDBACK SNAPSHOT:\n- Stance: Sell", formatted)
         self.assertIn("- New this round & rebuttal: More defensive", formatted)
         self.assertIn("Momentum broke", formatted)
         self.assertIn("Upside is capped", formatted)
@@ -125,7 +134,7 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("#### 激进分析师\n\nAggressive Analyst: Round 2 aggressive follow-up", formatted)
         self.assertIn("### 投资组合经理结论\nPortfolio Manager: Final allocation", formatted)
 
-    def test_inferred_snapshot_uses_auto_review_title(self):
+    def test_inferred_snapshot_shows_snapshot_without_review_heading(self):
         debate_state = {
             "bull_history": (
                 "多头分析师: 本轮新增了对库存风险的反驳，并强调需要继续跟踪金价与并购进度。\n"
@@ -142,7 +151,8 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         formatted = format_research_team_history(debate_state)
 
-        self.assertIn("##### 自动复盘", formatted)
+        self.assertIn("反馈快照:\n- 立场:", formatted)
+        self.assertNotIn("##### 自动复盘", formatted)
         self.assertNotIn("##### 本轮复盘", formatted)
 
     def test_research_manager_shows_body_before_snapshot_summary(self):
@@ -175,7 +185,7 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("本轮新增与反驳", formatted)
         self.assertIn("需求验证节奏的约束", formatted)
         self.assertIn("空头高估了估值压缩速度", formatted)
-        self.assertIn("(完整内容见: /tmp/research_manager_round_1.md)", formatted)
+        self.assertNotIn("(完整内容见:", formatted)
         self.assertLess(formatted.index("## 辩论裁决"), formatted.index("#### 反馈快照摘要"))
 
     def test_research_team_history_shows_decision_summary_outside_argument_body(self):
@@ -204,8 +214,31 @@ class CliRoundFormattingTests(unittest.TestCase):
         formatted = format_research_team_history(debate_state)
 
         self.assertIn("这是正文论证。", formatted)
-        self.assertIn("##### 决策摘要\n决策摘要:\n- 评级: 增持", formatted)
-        self.assertLess(formatted.index("这是正文论证。"), formatted.index("##### 决策摘要"))
+        self.assertIn("决策摘要:\n- 评级: 增持", formatted)
+        self.assertEqual(formatted.count("决策摘要:"), 1)
+        self.assertNotIn("##### 决策摘要", formatted)
+        self.assertLess(formatted.index("这是正文论证。"), formatted.index("决策摘要:\n- 评级: 增持"))
+
+    def test_portfolio_manager_hides_snapshot_summary(self):
+        risk_state = {
+            "aggressive_history": "",
+            "conservative_history": "",
+            "neutral_history": "",
+            "judge_decision": (
+                "Portfolio Manager: Final allocation\n\n"
+                "FEEDBACK SNAPSHOT:\n"
+                "- Stance: Hold\n"
+                "- New this round & rebuttal: Keep flexibility.\n"
+                "- To verify: Watch earnings."
+            ),
+            "judge_snapshot_path": "/tmp/portfolio_manager_round_1.md",
+        }
+
+        formatted = format_risk_management_history(risk_state)
+
+        self.assertIn("### 投资组合经理结论\nPortfolio Manager: Final allocation", formatted)
+        self.assertNotIn("反馈快照摘要", formatted)
+        self.assertNotIn("FEEDBACK SNAPSHOT", formatted)
 
 
 if __name__ == "__main__":

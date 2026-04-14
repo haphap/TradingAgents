@@ -7,6 +7,11 @@ from typing import Dict, List, Tuple
 ModelOption = Tuple[str, str]
 ProviderModeOptions = Dict[str, Dict[str, List[ModelOption]]]
 
+OLLAMA_MODEL_ALIASES = {
+    "Qwen3.5-35B-3A": "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M",
+    "Qwen3.5-35B-A3B": "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M",
+}
+
 
 MODEL_OPTIONS: ProviderModeOptions = {
     "openai": {
@@ -74,13 +79,13 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M"),
             ("Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M"),
             ("Qwen3.5-27B (llama.cpp local)", "Qwen3.5-27B"),
-            ("samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M (llama.cpp local)", "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M"),
+            ("Qwen3.5-35B-3A (llama.cpp local alias)", "Qwen3.5-35B-3A"),
             ("Qwen3.5-122B (llama.cpp local)", "Qwen3.5-122B"),
         ],
         "deep": [
             ("Qwen3.5-122B (llama.cpp local)", "Qwen3.5-122B"),
             ("Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-27B-v3-GGUF:Q4_K_M"),
-            ("samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M (llama.cpp local)", "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M"),
+            ("Qwen3.5-35B-A3B (llama.cpp local alias)", "Qwen3.5-35B-A3B"),
             ("Qwen3.5-27B (llama.cpp local)", "Qwen3.5-27B"),
             ("Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M"),
         ],
@@ -91,6 +96,13 @@ MODEL_OPTIONS: ProviderModeOptions = {
 def get_model_options(provider: str, mode: str) -> List[ModelOption]:
     """Return shared model options for a provider and selection mode."""
     return MODEL_OPTIONS[provider.lower()][mode]
+
+
+def resolve_model_alias(provider: str, model: str) -> str:
+    """Map user-facing model aliases to the canonical provider model IDs."""
+    if provider.lower() == "ollama":
+        return OLLAMA_MODEL_ALIASES.get(model, model)
+    return model
 
 
 def get_known_models() -> Dict[str, List[str]]:

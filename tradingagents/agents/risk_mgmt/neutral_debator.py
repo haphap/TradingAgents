@@ -4,15 +4,18 @@ from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     build_history_turn,
     extract_feedback_snapshot,
+    get_analyst_decision_instruction,
+    get_analyst_decision_template,
     get_language_instruction,
     get_no_greeting_instruction,
+    get_neutral_risk_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
-    get_neutral_risk_instruction,
     localize_role_name,
     make_display_snapshot,
     normalize_chinese_role_terms,
     save_snapshot_file,
+    strip_analyst_decision_summary,
     strip_feedback_snapshot,
     strip_role_prefix,
 )
@@ -62,7 +65,10 @@ If there are no responses from the other viewpoints yet, present your own argume
 
 Engage actively by analyzing both sides critically, addressing weaknesses in the aggressive and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility. Focus on debating rather than simply presenting data, aiming to show that a balanced view can lead to the most reliable outcomes. Output conversationally as if you are speaking without any special formatting.
 {get_neutral_risk_instruction()}
-After your normal argument, append an exact block using this template:
+{get_analyst_decision_instruction()}
+Use this exact decision-summary template:
+{get_analyst_decision_template()}
+After the decision summary, append an exact feedback snapshot block using this template:
 {get_snapshot_template(round_index)}
 {get_snapshot_writing_instruction(round_index)}{get_language_instruction()}{get_no_greeting_instruction()}"""
 
@@ -71,7 +77,10 @@ After your normal argument, append an exact block using this template:
             raw_content = normalize_chinese_role_terms(
                 extract_text_content(response.content)
             )
-            argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Neutral Analyst")
+            argument_body = strip_role_prefix(
+                strip_analyst_decision_summary(strip_feedback_snapshot(raw_content)),
+                "Neutral Analyst",
+            )
             history_turn = build_history_turn(raw_content, "Neutral Analyst")
             new_neutral_snapshot_full = extract_feedback_snapshot(raw_content)
             ticker = state.get("company_of_interest", "unknown")

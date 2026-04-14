@@ -8,15 +8,16 @@ from tradingagents.dataflows import qlib_local
 
 
 class QlibLocalTests(unittest.TestCase):
-    def test_load_ohlcv_keeps_qlib_prices_and_drops_incomplete_rows(self):
+    def test_load_ohlcv_restores_original_prices_and_drops_incomplete_rows(self):
         idx = pd.to_datetime(["2026-03-07", "2026-03-10", "2026-03-11"])
         feature_map = {
-            "open": pd.Series([1.9, 2.1, 2.3], index=idx, name="open"),
-            "high": pd.Series([2.1, 2.3], index=idx[:2], name="high"),
-            "low": pd.Series([1.8, 2.0, 2.2], index=idx, name="low"),
-            "close": pd.Series([2.0, 2.2], index=idx[:2], name="close"),
-            "volume": pd.Series([1000.0, 1200.0], index=idx[:2], name="volume"),
+            "open": pd.Series([10.0, 20.0, 30.0], index=idx, name="open"),
+            "high": pd.Series([11.0, 21.0], index=idx[:2], name="high"),
+            "low": pd.Series([9.0, 19.0, 29.0], index=idx, name="low"),
+            "close": pd.Series([10.5, 20.5], index=idx[:2], name="close"),
+            "volume": pd.Series([2000.0, 4000.0], index=idx[:2], name="volume"),
             "amount": pd.Series([500.0, 600.0], index=idx[:2], name="amount"),
+            "factor": pd.Series([0.5, 0.25], index=idx[:2], name="factor"),
         }
 
         def fake_read_feature(_instrument, field, _start, _end):
@@ -26,12 +27,33 @@ class QlibLocalTests(unittest.TestCase):
             df = qlib_local._load_ohlcv("sz300750", "2026-03-07", "2026-03-11")
 
         self.assertEqual(list(df.index.strftime("%Y-%m-%d")), ["2026-03-07", "2026-03-10"])
-        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-07"), "close"], 2.0)
-        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-10"), "open"], 2.1)
-        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-10"), "volume"], 1200.0)
+        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-07"), "close"], 21.0)
+        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-10"), "open"], 80.0)
+        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-10"), "volume"], 1000.0)
         self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-07"), "amount"], 500.0)
         self.assertNotIn("factor", df.columns)
         self.assertNotIn("adjclose", df.columns)
+
+    def test_load_ohlcv_drops_rows_with_missing_or_zero_factor(self):
+        idx = pd.to_datetime(["2026-03-07", "2026-03-10", "2026-03-11"])
+        feature_map = {
+            "open": pd.Series([10.0, 20.0, 30.0], index=idx, name="open"),
+            "high": pd.Series([11.0, 21.0, 31.0], index=idx, name="high"),
+            "low": pd.Series([9.0, 19.0, 29.0], index=idx, name="low"),
+            "close": pd.Series([10.5, 20.5, 30.5], index=idx, name="close"),
+            "volume": pd.Series([2000.0, 4000.0, 6000.0], index=idx, name="volume"),
+            "factor": pd.Series([0.5, 0.0, float("nan")], index=idx, name="factor"),
+        }
+
+        def fake_read_feature(_instrument, field, _start, _end):
+            return feature_map.get(field, pd.Series(dtype="float64", name=field))
+
+        with patch("tradingagents.dataflows.qlib_local._read_feature", side_effect=fake_read_feature):
+            df = qlib_local._load_ohlcv("sz300750", "2026-03-07", "2026-03-11")
+
+        self.assertEqual(list(df.index.strftime("%Y-%m-%d")), ["2026-03-07"])
+        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-07"), "open"], 20.0)
+        self.assertAlmostEqual(df.loc[pd.Timestamp("2026-03-07"), "volume"], 1000.0)
 
     def test_get_stock_raises_when_local_data_is_stale(self):
         idx = pd.to_datetime(["2026-02-24"])

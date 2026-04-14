@@ -1,6 +1,7 @@
 from typing import Optional
 
 from .base_client import BaseLLMClient
+from .model_catalog import resolve_model_alias
 from .openai_client import OpenAIClient
 from .anthropic_client import AnthropicClient
 from .google_client import GoogleClient
@@ -33,6 +34,7 @@ def create_llm_client(
         ValueError: If provider is not supported
     """
     provider_lower = provider.lower()
+    model = resolve_model_alias(provider_lower, model)
 
     if provider_lower in ("openai", "ollama", "openrouter"):
         return OpenAIClient(model, base_url, provider=provider_lower, **kwargs)

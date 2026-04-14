@@ -4,6 +4,12 @@ Qlib local data vendor for TradingAgents.
 Reads OHLCV data directly from qlib's binary feature files without requiring
 qlib to be installed. Falls back gracefully when data is unavailable.
 
+Qlib stores split-adjusted OHLCV values and normalizes prices on the first
+trading day of each stock. To surface user-facing prices and compute technical
+indicators on the same scale as the live market, prices are restored via
+``original_price = adjusted_price / factor`` and volumes via
+``original_volume = adjusted_volume * factor``.
+
 Binary format (per feature file):
   - Bytes 0-3: float32 representing the start calendar index
   - Bytes 4+:  float32 values, one per trading day from that calendar index
@@ -229,6 +235,29 @@ def _drop_incomplete_market_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _restore_original_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert qlib-adjusted OHLCV values back to original market scale."""
+    if df.empty or "factor" not in df.columns:
+        return df
+
+    restored = df.copy()
+    factor = pd.to_numeric(restored["factor"], errors="coerce")
+    valid_factor = factor.notna() & (factor != 0)
+    if not valid_factor.all():
+        restored = restored.loc[valid_factor].copy()
+        factor = factor.loc[valid_factor]
+
+    for col in ["open", "high", "low", "close"]:
+        if col in restored.columns:
+            restored[col] = pd.to_numeric(restored[col], errors="coerce") / factor
+
+    if "volume" in restored.columns:
+        restored["volume"] = pd.to_numeric(restored["volume"], errors="coerce") * factor
+
+    restored.index = pd.DatetimeIndex(restored.index)
+    return restored.drop(columns=["factor"])
+
+
 def _ensure_local_data_is_current(df: pd.DataFrame, instrument: str, end_date: str) -> None:
     """Raise when local qlib data is stale relative to the requested end date."""
     if df.empty:
@@ -250,7 +279,7 @@ def _load_ohlcv(
     instrument: str, start_date: str, end_date: str
 ) -> pd.DataFrame:
     """Load OHLCV + Amount DataFrame for an instrument."""
-    fields = ["open", "high", "low", "close", "volume", "amount"]
+    fields = ["open", "high", "low", "close", "volume", "amount", "factor"]
     series_dict = {}
     for field in fields:
         s = _read_feature(instrument, field, start_date, end_date)
@@ -258,6 +287,7 @@ def _load_ohlcv(
 
     df = pd.DataFrame(series_dict)
     df.index.name = "Date"
+    df = _restore_original_ohlcv(df)
     return _drop_incomplete_market_rows(df)
 
 

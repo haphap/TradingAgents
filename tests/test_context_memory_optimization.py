@@ -372,7 +372,7 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("库存与备货压力其实对应订单前置准备", display)
         self.assertIn("对手把高估值直接等同于泡沫，但忽略了订单兑现节奏", display)
         self.assertIn("继续跟踪1.6T良率、订单兑现和量能变化", display)
-        self.assertIn("(完整内容见: /tmp/snapshot.md)", display)
+        self.assertNotIn("(完整内容见:", display)
 
     def test_feedback_snapshot_rewrites_quantitatively_overlapping_rebuttal(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)

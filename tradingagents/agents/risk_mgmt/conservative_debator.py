@@ -4,15 +4,18 @@ from tradingagents.agents.utils.agent_utils import (
     build_debate_brief,
     build_history_turn,
     extract_feedback_snapshot,
+    get_analyst_decision_instruction,
+    get_analyst_decision_template,
+    get_conservative_risk_instruction,
     get_language_instruction,
     get_no_greeting_instruction,
     get_snapshot_template,
     get_snapshot_writing_instruction,
-    get_conservative_risk_instruction,
     localize_role_name,
     make_display_snapshot,
     normalize_chinese_role_terms,
     save_snapshot_file,
+    strip_analyst_decision_summary,
     strip_feedback_snapshot,
     strip_role_prefix,
 )
@@ -62,7 +65,10 @@ If there are no responses from the other viewpoints yet, present your own argume
 
 Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.
 {get_conservative_risk_instruction()}
-After your normal argument, append an exact block using this template:
+{get_analyst_decision_instruction()}
+Use this exact decision-summary template:
+{get_analyst_decision_template()}
+After the decision summary, append an exact feedback snapshot block using this template:
 {get_snapshot_template(round_index)}
 {get_snapshot_writing_instruction(round_index)}{get_language_instruction()}{get_no_greeting_instruction()}"""
 
@@ -71,7 +77,10 @@ After your normal argument, append an exact block using this template:
             raw_content = normalize_chinese_role_terms(
                 extract_text_content(response.content)
             )
-            argument_body = strip_role_prefix(strip_feedback_snapshot(raw_content), "Conservative Analyst")
+            argument_body = strip_role_prefix(
+                strip_analyst_decision_summary(strip_feedback_snapshot(raw_content)),
+                "Conservative Analyst",
+            )
             history_turn = build_history_turn(raw_content, "Conservative Analyst")
             new_conservative_snapshot_full = extract_feedback_snapshot(raw_content)
             ticker = state.get("company_of_interest", "unknown")

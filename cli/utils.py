@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Dict
 from rich.console import Console
 
 from cli.models import AnalystType
-from tradingagents.llm_clients.model_catalog import get_model_options
+from tradingagents.llm_clients.model_catalog import OLLAMA_MODEL_ALIASES, get_model_options
 
 console = Console()
 
@@ -178,12 +178,6 @@ def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
     """Fetch locally available models from an Ollama/llama.cpp server via OpenAI-compatible /v1/models."""
     import requests
 
-    # Known short-name aliases that duplicate a canonical full model ID.
-    # When both appear in the server list, suppress the alias.
-    _ALIAS_TO_CANONICAL = {
-        "Qwen3.5-35B-A3B": "samuelcardillo/Qwopus-MoE-35B-A3B-GGUF:Q4_K_M",
-    }
-
     try:
         resp = requests.get(f"{base_url}/models", timeout=5)
         resp.raise_for_status()
@@ -192,7 +186,7 @@ def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
         canonical_ids = set(raw_ids)
         deduped = [
             mid for mid in raw_ids
-            if not (_ALIAS_TO_CANONICAL.get(mid) in canonical_ids)
+            if not (OLLAMA_MODEL_ALIASES.get(mid) in canonical_ids)
         ]
         return [(mid, mid) for mid in deduped]
     except Exception as e:

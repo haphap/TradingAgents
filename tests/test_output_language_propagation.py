@@ -29,7 +29,23 @@ class _CapturingLLM:
 
     def invoke(self, prompt):
         self.calls.append(prompt)
-        return _FakeResponse("测试输出\n反馈快照:\n- 当前观点: x\n- 发生了什么变化: y\n- 为什么变化: z\n- 关键反驳: r\n- 下一轮教训: l")
+        return _FakeResponse(
+            "测试输出\n"
+            "决策摘要:\n"
+            "- 评级: 持有\n"
+            "- 置信度: 60%\n"
+            "- 时间区间: 1-3个月\n"
+            "- 关键假设:\n"
+            "  1. 需求平稳。\n"
+            "  2. 波动可控。\n"
+            "  3. 等待验证。\n"
+            "反馈快照:\n"
+            "- 当前观点: x\n"
+            "- 发生了什么变化: y\n"
+            "- 为什么变化: z\n"
+            "- 关键反驳: r\n"
+            "- 下一轮教训: l"
+        )
 
 
 class _EmptyMemory:
@@ -129,10 +145,13 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         investment_debate_state = node(copy.deepcopy(self.base_state))["investment_debate_state"]
         formatted = format_research_team_history(investment_debate_state)
 
-        self.assertIn("##### 本轮复盘", formatted)
+        self.assertIn("决策摘要:", formatted)
+        self.assertIn("- 评级: 持有", formatted)
+        self.assertNotIn("##### 本轮复盘", formatted)
         self.assertNotIn("##### 自动复盘", formatted)
         self.assertIn("- 立场: x", formatted)
         self.assertIn("- 本轮新增与反驳: y；z；r", formatted)
+        self.assertNotIn("决策摘要", investment_debate_state["current_bull_response"])
         self.assertNotIn("反馈快照", investment_debate_state["current_bull_response"])
 
     def test_normalize_chinese_role_terms_replaces_bull_bear_variants(self):
@@ -158,6 +177,7 @@ class OutputLanguagePropagationTests(unittest.TestCase):
 
             prompt = llm.calls[0]
             self.assertIn("Write your entire response in Chinese.", prompt)
+            self.assertIn("决策摘要", prompt)
             self.assertIn("反馈快照", prompt)
             self.assertIn("关键约束", prompt)
 
@@ -168,10 +188,13 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         risk_debate_state = node(copy.deepcopy(self.base_state))["risk_debate_state"]
         formatted = format_risk_management_history(risk_debate_state)
 
-        self.assertIn("##### 本轮复盘", formatted)
+        self.assertIn("决策摘要:", formatted)
+        self.assertIn("- 评级: 持有", formatted)
+        self.assertNotIn("##### 本轮复盘", formatted)
         self.assertNotIn("##### 自动复盘", formatted)
         self.assertIn("- 立场: x", formatted)
         self.assertIn("- 本轮新增与反驳: y；z；r", formatted)
+        self.assertNotIn("决策摘要", risk_debate_state["current_aggressive_response"])
         self.assertNotIn("反馈快照", risk_debate_state["current_aggressive_response"])
 
     def test_portfolio_manager_prompt_respects_output_language(self):

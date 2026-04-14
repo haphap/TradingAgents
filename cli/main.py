@@ -34,7 +34,6 @@ from tradingagents.agents.utils.agent_utils import (
     extract_analyst_decision_summary,
     extract_feedback_snapshot,
     get_output_language,
-    is_feedback_snapshot_inferred,
     localize_role_name,
     make_display_snapshot,
     strip_analyst_decision_summary,
@@ -295,6 +294,7 @@ def _format_grouped_rounds(
     manager_title: Optional[str] = None,
     manager_content: str = "",
     manager_snapshot_path: str = "",
+    manager_show_snapshot: bool = True,
 ) -> str:
     output_language = get_output_language().strip().lower()
     is_chinese = output_language in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
@@ -319,15 +319,9 @@ def _format_grouped_rounds(
                 if argument_body:
                     speaker_parts.append(argument_body)
                 if decision_summary:
-                    decision_title = "决策摘要" if is_chinese else "Decision Summary"
-                    speaker_parts.append(f"##### {decision_title}\n{decision_summary}")
+                    speaker_parts.append(decision_summary)
                 if snapshot:
-                    inferred_snapshot = is_feedback_snapshot_inferred(turn)
-                    if is_chinese:
-                        snapshot_title = "自动复盘" if inferred_snapshot else "本轮复盘"
-                    else:
-                        snapshot_title = "Auto Review" if inferred_snapshot else "Round Review"
-                    speaker_parts.append(f"##### {snapshot_title}\n" + snapshot)
+                    speaker_parts.append(snapshot)
                 round_parts.append("\n\n".join(speaker_parts))
         if round_parts:
             round_title = f"第 {round_index + 1} 轮" if is_chinese else f"Round {round_index + 1}"
@@ -336,22 +330,26 @@ def _format_grouped_rounds(
     if manager_title and manager_content and manager_content.strip():
         parts.append(
             f"### {manager_title}\n"
-            f"{_format_manager_decision(manager_content, manager_snapshot_path)}"
+            f"{_format_manager_decision(manager_content, manager_snapshot_path, show_snapshot_summary=manager_show_snapshot)}"
         )
 
     return "\n\n".join(parts).strip()
 
 
-def _format_manager_decision(manager_content: str, snapshot_path: str = "") -> str:
+def _format_manager_decision(
+    manager_content: str,
+    snapshot_path: str = "",
+    show_snapshot_summary: bool = True,
+) -> str:
     """Show the manager's conclusion first, then a short snapshot summary."""
     content = (manager_content or "").strip()
     if not content:
         return ""
 
     body = strip_feedback_snapshot(content)
-    snapshot = extract_feedback_snapshot(content)
     snapshot_summary = ""
-    if snapshot:
+    if show_snapshot_summary:
+        snapshot = extract_feedback_snapshot(content)
         snapshot_summary = make_display_snapshot(snapshot, snapshot_path)
 
     parts = []
@@ -384,6 +382,7 @@ def format_research_team_history(debate_state: dict) -> str:
         manager_title=manager_title,
         manager_content=debate_state.get("judge_decision", ""),
         manager_snapshot_path=debate_state.get("judge_snapshot_path", ""),
+        manager_show_snapshot=True,
     )
 
 
@@ -404,6 +403,7 @@ def format_risk_management_history(risk_state: dict) -> str:
         manager_title=manager_title,
         manager_content=risk_state.get("judge_decision", ""),
         manager_snapshot_path=risk_state.get("judge_snapshot_path", ""),
+        manager_show_snapshot=False,
     )
 
 
@@ -860,6 +860,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
                 _format_manager_decision(
                     debate["judge_decision"],
                     debate.get("judge_snapshot_path", ""),
+                    show_snapshot_summary=True,
                 )
             )
         formatted_research = format_research_team_history(debate)
@@ -913,6 +914,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
             formatted_portfolio = _format_manager_decision(
                 risk["judge_decision"],
                 risk.get("judge_snapshot_path", ""),
+                show_snapshot_summary=False,
             )
             (portfolio_dir / "decision.md").write_text(formatted_portfolio)
             sections.append(
@@ -989,6 +991,7 @@ def display_complete_report(final_state):
                         _format_manager_decision(
                             risk["judge_decision"],
                             risk.get("judge_snapshot_path", ""),
+                            show_snapshot_summary=False,
                         )
                     ),
                     title="Portfolio Manager",

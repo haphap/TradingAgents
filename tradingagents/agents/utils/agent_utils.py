@@ -317,8 +317,8 @@ def get_aggressive_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为激进分析师，你的自然倾向是寻找高回报机会，但若本轮证据确实指向风险，"
             "也可以选择逐步减仓或立即止损——重要的是结论与论点保持自洽，而非机械地执行激进立场。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
-            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
@@ -326,8 +326,8 @@ def get_aggressive_risk_instruction() -> str:
         "As the Aggressive Analyst your natural lean is high-reward entry, but if evidence "
         "this round clearly points to risk, gradual reduction or a stop-loss is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically aggressive. "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
-        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
 def get_conservative_risk_instruction() -> str:
@@ -340,8 +340,8 @@ def get_conservative_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为保守分析师，你的自然倾向是保护资产、控制回撤，但若本轮证据确实支持机会，"
             "也可以选择维持仓位甚至小幅加仓——重要的是结论与论点保持自洽，而非机械地执行保守立场。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
-            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
@@ -349,8 +349,8 @@ def get_conservative_risk_instruction() -> str:
         "As the Conservative Analyst your natural lean is capital protection, but if evidence "
         "this round genuinely supports a position, holding or a small increase is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically cautious. "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
-        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
 def get_neutral_risk_instruction() -> str:
@@ -363,8 +363,8 @@ def get_neutral_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为中性分析师，你的自然倾向是平衡两方观点，但若本轮证据明确偏向某一侧，"
             "也可以选择激进加仓或坚决减仓——重要的是结论与论点保持自洽，而非机械地居中立场。"
-            "最后一行必须使用格式 '风险建议: **[行动]**'。\n"
-            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%%以内**  或  风险建议: **分批建仓，首批仓位不超过30%%**"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
         "Before appending the snapshot, verify self-consistency: does your 'Stance' field "
@@ -372,8 +372,8 @@ def get_neutral_risk_instruction() -> str:
         "As the Neutral Analyst your natural lean is balance, but if evidence "
         "this round clearly favors one side, aggressive accumulation or decisive reduction is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically neutral. "
-        "Conclude with a final line using format 'RISK RECOMMENDATION: **[action]**'.\n"
-        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%%**"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
 
@@ -1321,10 +1321,15 @@ def _clean_snapshot_display_value(value: str) -> str:
     return separator.join(cleaned_segments)
 
 
-def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
-    """Create a brief inline display of the snapshot with a link to the full file.
+def make_display_snapshot(
+    full_snapshot: str,
+    file_path: str = "",
+    include_link: bool = False,
+) -> str:
+    """Create a brief inline display of the snapshot.
 
-    Keeps the cleaned field content intact while still linking to the full file.
+    Snapshot files remain available through the stored ``*_snapshot_path`` state,
+    but user-facing displays hide file links by default to keep the report clean.
     """
     fields = _parse_snapshot_fields(full_snapshot)
     labels = _snapshot_field_labels()
@@ -1338,7 +1343,7 @@ def make_display_snapshot(full_snapshot: str, file_path: str) -> str:
             lines.append(f"- {label}: {cleaned_value}")
 
     display = "\n".join(lines) if lines else full_snapshot[:200]
-    if file_path:
+    if include_link and file_path:
         link_label = "完整内容见" if _is_chinese_output() else "Full snapshot"
         display += f"\n({link_label}: {file_path})"
     return display
