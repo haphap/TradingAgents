@@ -36,8 +36,11 @@ from tradingagents.agents.utils.agent_utils import (
     get_output_language,
     localize_role_name,
     make_display_snapshot,
+    normalize_chinese_manager_terms,
+    normalize_chinese_role_terms,
     strip_analyst_decision_summary,
     strip_feedback_snapshot,
+    strip_role_prefix,
 )
 
 console = Console()
@@ -47,6 +50,36 @@ app = typer.Typer(
     help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
     add_completion=True,  # Enable shell completion
 )
+
+
+CHINESE_OUTPUT_VALUES = {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
+
+CLI_SECTION_TITLES = {
+    "market_report": ("Market Analysis", "市场分析"),
+    "sentiment_report": ("Social Sentiment", "社交情绪分析"),
+    "news_report": ("News Analysis", "新闻分析"),
+    "fundamentals_report": ("Fundamentals Analysis", "基本面分析"),
+    "investment_plan": ("Research Team Decision", "研究团队结论"),
+    "trader_investment_plan": ("Trading Team Plan", "交易团队计划"),
+    "final_trade_decision": ("Portfolio Management Decision", "投资组合管理决策"),
+}
+
+
+def _is_chinese_output() -> bool:
+    return get_output_language().strip().lower() in CHINESE_OUTPUT_VALUES
+
+
+def _localize_cli_label(english: str, chinese: str) -> str:
+    return chinese if _is_chinese_output() else english
+
+
+def _localize_cli_role_title(role: str) -> str:
+    return localize_role_name(role) if _is_chinese_output() else role
+
+
+def _localize_cli_section_title(section_name: str) -> str:
+    english, chinese = CLI_SECTION_TITLES.get(section_name, (section_name, section_name))
+    return _localize_cli_label(english, chinese)
 
 
 # Create a deque to store recent messages with a maximum length
@@ -177,18 +210,8 @@ class MessageBuffer:
                 latest_content = content
                
         if latest_section and latest_content:
-            # Format the current section for display
-            section_titles = {
-                "market_report": "Market Analysis",
-                "sentiment_report": "Social Sentiment",
-                "news_report": "News Analysis",
-                "fundamentals_report": "Fundamentals Analysis",
-                "investment_plan": "Research Team Decision",
-                "trader_investment_plan": "Trading Team Plan",
-                "final_trade_decision": "Portfolio Management Decision",
-            }
             self.current_report = (
-                f"### {section_titles[latest_section]}\n{latest_content}"
+                f"### {_localize_cli_section_title(latest_section)}\n{latest_content}"
             )
 
         # Update the final complete report
@@ -200,37 +223,45 @@ class MessageBuffer:
         # Analyst Team Reports - use .get() to handle missing sections
         analyst_sections = ["market_report", "sentiment_report", "news_report", "fundamentals_report"]
         if any(self.report_sections.get(section) for section in analyst_sections):
-            report_parts.append("## Analyst Team Reports")
+            report_parts.append(
+                f"## {_localize_cli_label('Analyst Team Reports', '分析团队报告')}"
+            )
             if self.report_sections.get("market_report"):
                 report_parts.append(
-                    f"### Market Analysis\n{self.report_sections['market_report']}"
+                    f"### {_localize_cli_section_title('market_report')}\n{self.report_sections['market_report']}"
                 )
             if self.report_sections.get("sentiment_report"):
                 report_parts.append(
-                    f"### Social Sentiment\n{self.report_sections['sentiment_report']}"
+                    f"### {_localize_cli_section_title('sentiment_report')}\n{self.report_sections['sentiment_report']}"
                 )
             if self.report_sections.get("news_report"):
                 report_parts.append(
-                    f"### News Analysis\n{self.report_sections['news_report']}"
+                    f"### {_localize_cli_section_title('news_report')}\n{self.report_sections['news_report']}"
                 )
             if self.report_sections.get("fundamentals_report"):
                 report_parts.append(
-                    f"### Fundamentals Analysis\n{self.report_sections['fundamentals_report']}"
+                    f"### {_localize_cli_section_title('fundamentals_report')}\n{self.report_sections['fundamentals_report']}"
                 )
 
         # Research Team Reports
         if self.report_sections.get("investment_plan"):
-            report_parts.append("## Research Team Decision")
+            report_parts.append(
+                f"## {_localize_cli_section_title('investment_plan')}"
+            )
             report_parts.append(f"{self.report_sections['investment_plan']}")
 
         # Trading Team Reports
         if self.report_sections.get("trader_investment_plan"):
-            report_parts.append("## Trading Team Plan")
+            report_parts.append(
+                f"## {_localize_cli_section_title('trader_investment_plan')}"
+            )
             report_parts.append(f"{self.report_sections['trader_investment_plan']}")
 
         # Portfolio Management Decision
         if self.report_sections.get("final_trade_decision"):
-            report_parts.append("## Portfolio Management Decision")
+            report_parts.append(
+                f"## {_localize_cli_section_title('final_trade_decision')}"
+            )
             report_parts.append(f"{self.report_sections['final_trade_decision']}")
 
         self.final_report = "\n\n".join(report_parts) if report_parts else None
@@ -245,19 +276,9 @@ RESEARCH_SPEAKER_ALIASES = {
 }
 
 RISK_SPEAKER_ALIASES = {
-    "Aggressive Analyst": ("Aggressive Analyst", "激进分析师"),
-    "Conservative Analyst": ("Conservative Analyst", "保守分析师"),
-    "Neutral Analyst": ("Neutral Analyst", "中性分析师"),
-}
-
-DISPLAY_ROLE_NAMES = {
-    "Bull Researcher": "多头分析师",
-    "Bear Researcher": "空头分析师",
-    "Research Manager": "研究经理",
-    "Aggressive Analyst": "激进分析师",
-    "Conservative Analyst": "保守分析师",
-    "Neutral Analyst": "中性分析师",
-    "Portfolio Manager": "投资组合经理",
+    "Aggressive Analyst": ("Aggressive Analyst", "激进风险分析师", "激进分析师"),
+    "Conservative Analyst": ("Conservative Analyst", "保守风险分析师", "保守分析师"),
+    "Neutral Analyst": ("Neutral Analyst", "中性风险分析师", "中性分析师"),
 }
 
 
@@ -296,8 +317,7 @@ def _format_grouped_rounds(
     manager_snapshot_path: str = "",
     manager_show_snapshot: bool = True,
 ) -> str:
-    output_language = get_output_language().strip().lower()
-    is_chinese = output_language in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
+    is_chinese = _is_chinese_output()
     turns_by_speaker = {
         speaker: _split_history_into_turns(histories.get(speaker, ""), speaker_aliases)
         for speaker in speaker_aliases
@@ -311,10 +331,19 @@ def _format_grouped_rounds(
             if round_index < len(turns):
                 turn = turns[round_index]
                 turn_without_snapshot = strip_feedback_snapshot(turn)
-                argument_body = strip_analyst_decision_summary(turn_without_snapshot)
-                decision_summary = extract_analyst_decision_summary(turn)
-                snapshot = extract_feedback_snapshot(turn)
-                speaker_title = DISPLAY_ROLE_NAMES.get(speaker, speaker) if is_chinese else speaker
+                argument_body = normalize_chinese_role_terms(
+                    strip_role_prefix(
+                        strip_analyst_decision_summary(turn_without_snapshot),
+                        speaker,
+                    )
+                )
+                decision_summary = normalize_chinese_role_terms(
+                    extract_analyst_decision_summary(turn)
+                )
+                snapshot = normalize_chinese_role_terms(
+                    extract_feedback_snapshot(turn)
+                )
+                speaker_title = _localize_cli_role_title(speaker) if is_chinese else speaker
                 speaker_parts = [f"#### {speaker_title}"]
                 if argument_body:
                     speaker_parts.append(argument_body)
@@ -346,10 +375,10 @@ def _format_manager_decision(
     if not content:
         return ""
 
-    body = strip_feedback_snapshot(content)
+    body = normalize_chinese_manager_terms(strip_feedback_snapshot(content))
     snapshot_summary = ""
     if show_snapshot_summary:
-        snapshot = extract_feedback_snapshot(content)
+        snapshot = normalize_chinese_role_terms(extract_feedback_snapshot(content))
         snapshot_summary = make_display_snapshot(snapshot, snapshot_path)
 
     parts = []
@@ -358,7 +387,7 @@ def _format_manager_decision(
     if snapshot_summary:
         snapshot_title = (
             "反馈快照摘要"
-            if get_output_language().strip().lower() in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
+            if _is_chinese_output()
             else "Snapshot Summary"
         )
         parts.append(f"#### {snapshot_title}\n{snapshot_summary}")
@@ -824,22 +853,24 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
     if final_state.get("market_report"):
         analysts_dir.mkdir(exist_ok=True)
         (analysts_dir / "market.md").write_text(final_state["market_report"])
-        analyst_parts.append(("Market Analyst", final_state["market_report"]))
+        analyst_parts.append((_localize_cli_role_title("Market Analyst"), final_state["market_report"]))
     if final_state.get("sentiment_report"):
         analysts_dir.mkdir(exist_ok=True)
         (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"])
-        analyst_parts.append(("Social Analyst", final_state["sentiment_report"]))
+        analyst_parts.append((_localize_cli_role_title("Social Analyst"), final_state["sentiment_report"]))
     if final_state.get("news_report"):
         analysts_dir.mkdir(exist_ok=True)
         (analysts_dir / "news.md").write_text(final_state["news_report"])
-        analyst_parts.append(("News Analyst", final_state["news_report"]))
+        analyst_parts.append((_localize_cli_role_title("News Analyst"), final_state["news_report"]))
     if final_state.get("fundamentals_report"):
         analysts_dir.mkdir(exist_ok=True)
         (analysts_dir / "fundamentals.md").write_text(final_state["fundamentals_report"])
-        analyst_parts.append(("Fundamentals Analyst", final_state["fundamentals_report"]))
+        analyst_parts.append((_localize_cli_role_title("Fundamentals Analyst"), final_state["fundamentals_report"]))
     if analyst_parts:
         content = "\n\n".join(f"### {name}\n{text}" for name, text in analyst_parts)
-        sections.append(f"## I. Analyst Team Reports\n\n{content}")
+        sections.append(
+            f"## {_localize_cli_label('I. Analyst Team Reports', 'I. 分析团队报告')}\n\n{content}"
+        )
 
     # 2. Research
     if final_state.get("investment_debate_state"):
@@ -849,11 +880,11 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         if debate.get("bull_history"):
             research_dir.mkdir(exist_ok=True)
             (research_dir / "bull.md").write_text(debate["bull_history"])
-            research_parts.append(("Bull Researcher", debate["bull_history"]))
+            research_parts.append((_localize_cli_role_title("Bull Researcher"), debate["bull_history"]))
         if debate.get("bear_history"):
             research_dir.mkdir(exist_ok=True)
             (research_dir / "bear.md").write_text(debate["bear_history"])
-            research_parts.append(("Bear Researcher", debate["bear_history"]))
+            research_parts.append((_localize_cli_role_title("Bear Researcher"), debate["bear_history"]))
         if debate.get("judge_decision"):
             research_dir.mkdir(exist_ok=True)
             (research_dir / "manager.md").write_text(
@@ -871,14 +902,19 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
             content = formatted_research or "\n\n".join(
                 f"### {name}\n{text}" for name, text in research_parts
             )
-            sections.append(f"## II. Research Team Decision\n\n{content}")
+            sections.append(
+                f"## {_localize_cli_label('II. Research Team Decision', 'II. 研究团队结论')}\n\n{content}"
+            )
 
     # 3. Trading
     if final_state.get("trader_investment_plan"):
         trading_dir = save_path / "3_trading"
         trading_dir.mkdir(exist_ok=True)
         (trading_dir / "trader.md").write_text(final_state["trader_investment_plan"])
-        sections.append(f"## III. Trading Team Plan\n\n### Trader\n{final_state['trader_investment_plan']}")
+        sections.append(
+            f"## {_localize_cli_label('III. Trading Team Plan', 'III. 交易团队计划')}\n\n"
+            f"### {_localize_cli_role_title('Trader')}\n{final_state['trader_investment_plan']}"
+        )
 
     # 4. Risk Management
     if final_state.get("risk_debate_state"):
@@ -888,15 +924,15 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         if risk.get("aggressive_history"):
             risk_dir.mkdir(exist_ok=True)
             (risk_dir / "aggressive.md").write_text(risk["aggressive_history"])
-            risk_parts.append(("Aggressive Analyst", risk["aggressive_history"]))
+            risk_parts.append((_localize_cli_role_title("Aggressive Analyst"), risk["aggressive_history"]))
         if risk.get("conservative_history"):
             risk_dir.mkdir(exist_ok=True)
             (risk_dir / "conservative.md").write_text(risk["conservative_history"])
-            risk_parts.append(("Conservative Analyst", risk["conservative_history"]))
+            risk_parts.append((_localize_cli_role_title("Conservative Analyst"), risk["conservative_history"]))
         if risk.get("neutral_history"):
             risk_dir.mkdir(exist_ok=True)
             (risk_dir / "neutral.md").write_text(risk["neutral_history"])
-            risk_parts.append(("Neutral Analyst", risk["neutral_history"]))
+            risk_parts.append((_localize_cli_role_title("Neutral Analyst"), risk["neutral_history"]))
         formatted_risk = format_risk_management_history(risk)
         if formatted_risk:
             risk_dir.mkdir(exist_ok=True)
@@ -905,7 +941,9 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
             content = formatted_risk or "\n\n".join(
                 f"### {name}\n{text}" for name, text in risk_parts
             )
-            sections.append(f"## IV. Risk Management Team Decision\n\n{content}")
+            sections.append(
+                f"## {_localize_cli_label('IV. Risk Management Team Decision', 'IV. 风险管理团队结论')}\n\n{content}"
+            )
 
         # 5. Portfolio Manager
         if risk.get("judge_decision"):
@@ -918,11 +956,15 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
             )
             (portfolio_dir / "decision.md").write_text(formatted_portfolio)
             sections.append(
-                f"## V. Portfolio Manager Decision\n\n### Portfolio Manager\n{formatted_portfolio}"
+                f"## {_localize_cli_label('V. Portfolio Manager Decision', 'V. 投资组合经理决策')}\n\n"
+                f"### {_localize_cli_role_title('Portfolio Manager')}\n{formatted_portfolio}"
             )
 
     # Write consolidated report
-    header = f"# Trading Analysis Report: {ticker}\n\nGenerated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    header = (
+        f"# {_localize_cli_label('Trading Analysis Report', '交易分析报告')}: {ticker}\n\n"
+        f"{_localize_cli_label('Generated', '生成时间')}: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    )
     (save_path / "complete_report.md").write_text(header + "\n\n".join(sections))
     return save_path / "complete_report.md"
 
@@ -930,20 +972,27 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
 def display_complete_report(final_state):
     """Display the complete analysis report sequentially (avoids truncation)."""
     console.print()
-    console.print(Rule("Complete Analysis Report", style="bold green"))
+    console.print(
+        Rule(_localize_cli_label("Complete Analysis Report", "完整分析报告"), style="bold green")
+    )
 
     # I. Analyst Team Reports
     analysts = []
     if final_state.get("market_report"):
-        analysts.append(("Market Analyst", final_state["market_report"]))
+        analysts.append((_localize_cli_role_title("Market Analyst"), final_state["market_report"]))
     if final_state.get("sentiment_report"):
-        analysts.append(("Social Analyst", final_state["sentiment_report"]))
+        analysts.append((_localize_cli_role_title("Social Analyst"), final_state["sentiment_report"]))
     if final_state.get("news_report"):
-        analysts.append(("News Analyst", final_state["news_report"]))
+        analysts.append((_localize_cli_role_title("News Analyst"), final_state["news_report"]))
     if final_state.get("fundamentals_report"):
-        analysts.append(("Fundamentals Analyst", final_state["fundamentals_report"]))
+        analysts.append((_localize_cli_role_title("Fundamentals Analyst"), final_state["fundamentals_report"]))
     if analysts:
-        console.print(Panel("[bold]I. Analyst Team Reports[/bold]", border_style="cyan"))
+        console.print(
+            Panel(
+                f"[bold]{_localize_cli_label('I. Analyst Team Reports', 'I. 分析团队报告')}[/bold]",
+                border_style="cyan",
+            )
+        )
         for title, content in analysts:
             console.print(Panel(Markdown(content), title=title, border_style="blue", padding=(1, 2)))
 
@@ -952,11 +1001,16 @@ def display_complete_report(final_state):
         debate = final_state["investment_debate_state"]
         formatted_research = format_research_team_history(debate)
         if formatted_research:
-            console.print(Panel("[bold]II. Research Team Decision[/bold]", border_style="magenta"))
+            console.print(
+                Panel(
+                    f"[bold]{_localize_cli_label('II. Research Team Decision', 'II. 研究团队结论')}[/bold]",
+                    border_style="magenta",
+                )
+            )
             console.print(
                 Panel(
                     Markdown(formatted_research),
-                    title="Research Team",
+                    title=_localize_cli_label("Research Team", "研究团队"),
                     border_style="blue",
                     padding=(1, 2),
                 )
@@ -964,19 +1018,36 @@ def display_complete_report(final_state):
 
     # III. Trading Team
     if final_state.get("trader_investment_plan"):
-        console.print(Panel("[bold]III. Trading Team Plan[/bold]", border_style="yellow"))
-        console.print(Panel(Markdown(final_state["trader_investment_plan"]), title="Trader", border_style="blue", padding=(1, 2)))
+        console.print(
+            Panel(
+                f"[bold]{_localize_cli_label('III. Trading Team Plan', 'III. 交易团队计划')}[/bold]",
+                border_style="yellow",
+            )
+        )
+        console.print(
+            Panel(
+                Markdown(final_state["trader_investment_plan"]),
+                title=_localize_cli_role_title("Trader"),
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
 
     # IV. Risk Management Team
     if final_state.get("risk_debate_state"):
         risk = final_state["risk_debate_state"]
         formatted_risk = format_risk_management_history(risk)
         if formatted_risk:
-            console.print(Panel("[bold]IV. Risk Management Team Decision[/bold]", border_style="red"))
+            console.print(
+                Panel(
+                    f"[bold]{_localize_cli_label('IV. Risk Management Team Decision', 'IV. 风险管理团队结论')}[/bold]",
+                    border_style="red",
+                )
+            )
             console.print(
                 Panel(
                     Markdown(formatted_risk),
-                    title="Risk Management Team",
+                    title=_localize_cli_label("Risk Management Team", "风险管理团队"),
                     border_style="blue",
                     padding=(1, 2),
                 )
@@ -984,7 +1055,12 @@ def display_complete_report(final_state):
 
         # V. Portfolio Manager Decision
         if risk.get("judge_decision"):
-            console.print(Panel("[bold]V. Portfolio Manager Decision[/bold]", border_style="green"))
+            console.print(
+                Panel(
+                    f"[bold]{_localize_cli_label('V. Portfolio Manager Decision', 'V. 投资组合经理决策')}[/bold]",
+                    border_style="green",
+                )
+            )
             console.print(
                 Panel(
                     Markdown(
@@ -994,7 +1070,7 @@ def display_complete_report(final_state):
                             show_snapshot_summary=False,
                         )
                     ),
-                    title="Portfolio Manager",
+                    title=_localize_cli_role_title("Portfolio Manager"),
                     border_style="blue",
                     padding=(1, 2),
                 )

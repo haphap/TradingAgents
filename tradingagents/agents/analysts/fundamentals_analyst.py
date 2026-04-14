@@ -10,6 +10,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_fundamentals,
     get_income_statement,
     get_language_instruction,
+    normalize_chinese_role_terms,
     truncate_for_prompt,
 )
 from tradingagents.tool_report_utils import run_tool_report_chain
@@ -126,7 +127,9 @@ Existing conversation data:
 Additional statement data fetched to complete the report:
 {additional_fundamental_data}
 """
-    return extract_text_content(llm.invoke(rewrite_prompt).content)
+    return normalize_chinese_role_terms(
+        extract_text_content(llm.invoke(rewrite_prompt).content)
+    )
 
 
 def create_fundamentals_analyst(llm):
@@ -176,6 +179,7 @@ def create_fundamentals_analyst(llm):
             current_date=current_date,
             instrument_context=instrument_context,
         )
+        report = normalize_chinese_role_terms(report) if report else report
 
         needs_completion = (
             not getattr(result, "tool_calls", None)
@@ -198,6 +202,8 @@ def create_fundamentals_analyst(llm):
             if completed_report:
                 result = AIMessage(content=completed_report)
                 report = completed_report
+        elif report and not getattr(result, "tool_calls", None):
+            result = AIMessage(content=report)
 
         return {
             "messages": [result],

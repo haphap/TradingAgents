@@ -10,7 +10,7 @@ from tradingagents.agents.utils.agent_utils import (
     localize_label,
     localize_rating_term,
     localize_role_name,
-    normalize_chinese_role_terms,
+    normalize_chinese_manager_terms,
     save_snapshot_file,
     strip_feedback_snapshot,
     synthesize_side_report,
@@ -48,15 +48,16 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the {localize_role_name("Bear Analyst")}, the {localize_role_name("Bull Analyst")}, or choose {localize_rating_term("Hold")} only if it is strongly justified based on the arguments presented.
+        prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate the full multi-round debate and make a definitive decision: align with the {localize_role_name("Bear Analyst")}, the {localize_role_name("Bull Analyst")}, or choose {localize_rating_term("Hold")} only if it is strongly justified based on the arguments presented.
 
 Your response must evaluate both sides before giving a position. Do not jump straight to the holding suggestion.
 
 Use this exact output order with Markdown headings:
-## {localize_label("Debate Verdict", "辩论裁决")}
-- Judge which side presented the stronger case.
+## {localize_label("Debate Conclusion", "辩论结论")}
+- Assess which side presented the stronger case across the full debate, not just the latest exchange.
 - Summarize the strongest points from both the {localize_role_name("Bull Analyst")} and the {localize_role_name("Bear Analyst")}.
 - Explicitly point out the decisive weakness in the losing side's case.
+- When writing in Chinese, use neutral investment wording such as "综合结论" and refer to the entire debate as "整场辩论"; avoid judicial wording like "判决" and avoid phrasing that sounds limited to "本轮".
 
 ## {localize_label("Action Logic", "行为逻辑")}
 - Write your own decision logic from evidence to action, not just a repetition of either side.
@@ -87,7 +88,7 @@ Here are your past reflections on mistakes:
 {bear_report}{get_language_instruction()}
 """
         response = llm.invoke(prompt)
-        normalized_content = normalize_chinese_role_terms(
+        normalized_content = normalize_chinese_manager_terms(
             extract_text_content(response.content)
         )
         judge_snapshot_full = extract_feedback_snapshot(normalized_content)

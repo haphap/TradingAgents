@@ -154,16 +154,24 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         self.assertNotIn("决策摘要", investment_debate_state["current_bull_response"])
         self.assertNotIn("反馈快照", investment_debate_state["current_bull_response"])
 
-    def test_normalize_chinese_role_terms_replaces_bull_bear_variants(self):
-        text = "我是熊派分析师，也不同意牛派分析师和熊派投资者的说法。"
+    def test_normalize_chinese_role_terms_replaces_display_variants(self):
+        text = "我是熊派分析师，也不同意牛派分析师、激进分析师、保守分析师、中性分析师、熊派投资者和根本分析的说法。"
         normalized = normalize_chinese_role_terms(text)
 
         self.assertNotIn("熊派分析师", normalized)
         self.assertNotIn("牛派分析师", normalized)
+        self.assertNotIn("激进分析师", normalized)
+        self.assertNotIn("保守分析师", normalized)
+        self.assertNotIn("中性分析师", normalized)
         self.assertNotIn("熊派投资者", normalized)
+        self.assertNotIn("根本分析", normalized)
         self.assertIn("空头分析师", normalized)
         self.assertIn("多头分析师", normalized)
+        self.assertIn("激进风险分析师", normalized)
+        self.assertIn("保守风险分析师", normalized)
+        self.assertIn("中性风险分析师", normalized)
         self.assertIn("空头投资者", normalized)
+        self.assertIn("基本面分析", normalized)
 
     def test_risk_team_prompts_respect_output_language(self):
         for factory in (
@@ -205,9 +213,9 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         prompt = llm.calls[0]
         self.assertIn("Write your entire response in Chinese.", prompt)
         self.assertIn("反馈快照", prompt)
-        self.assertIn("激进分析师", prompt)
-        self.assertIn("保守分析师", prompt)
-        self.assertIn("中性分析师", prompt)
+        self.assertIn("激进风险分析师", prompt)
+        self.assertIn("保守风险分析师", prompt)
+        self.assertIn("中性风险分析师", prompt)
         self.assertIn("评级体系", prompt)
         self.assertIn("买入", prompt)
         self.assertIn("增持", prompt)

@@ -143,35 +143,47 @@ def localize_label(english: str, chinese: str) -> str:
     return chinese if _is_chinese_output() else english
 
 
+ROLE_LOCALIZATION_MAP: dict[str, str] = {
+    "Bull Analyst": "多头分析师",
+    "Bull Researcher": "多头分析师",
+    "Bear Analyst": "空头分析师",
+    "Bear Researcher": "空头分析师",
+    "Aggressive Analyst": "激进风险分析师",
+    "Conservative Analyst": "保守风险分析师",
+    "Neutral Analyst": "中性风险分析师",
+    "Market Analyst": "市场分析师",
+    "Social Analyst": "社交情绪分析师",
+    "News Analyst": "新闻分析师",
+    "Fundamentals Analyst": "基本面分析师",
+    "Portfolio Manager": "投资组合经理",
+    "Research Manager": "研究经理",
+    "Trader": "交易员",
+    "Judge": "裁决者",
+}
+
+
+ROLE_VARIANT_NAMES: dict[str, set[str]] = {
+    "Bull Analyst": {"Bull Analyst", "Bull Researcher", "多头分析师"},
+    "Bull Researcher": {"Bull Analyst", "Bull Researcher", "多头分析师"},
+    "Bear Analyst": {"Bear Analyst", "Bear Researcher", "空头分析师"},
+    "Bear Researcher": {"Bear Analyst", "Bear Researcher", "空头分析师"},
+    "Aggressive Analyst": {"Aggressive Analyst", "激进分析师", "激进风险分析师"},
+    "Conservative Analyst": {"Conservative Analyst", "保守分析师", "保守风险分析师"},
+    "Neutral Analyst": {"Neutral Analyst", "中性分析师", "中性风险分析师"},
+    "Portfolio Manager": {"Portfolio Manager", "投资组合经理"},
+    "Research Manager": {"Research Manager", "研究经理"},
+    "Trader": {"Trader", "交易员"},
+    "Judge": {"Judge", "裁决者"},
+}
+
+
 def localize_role_name(role: str) -> str:
-    mapping = {
-        "Bull Analyst": "多头分析师",
-        "Bear Analyst": "空头分析师",
-        "Aggressive Analyst": "激进分析师",
-        "Conservative Analyst": "保守分析师",
-        "Neutral Analyst": "中性分析师",
-        "Portfolio Manager": "投资组合经理",
-        "Research Manager": "研究经理",
-        "Trader": "交易员",
-        "Judge": "裁决者",
-    }
-    return mapping.get(role, role) if _is_chinese_output() else role
+    return ROLE_LOCALIZATION_MAP.get(role, role) if _is_chinese_output() else role
 
 
 # Reverse mapping: Chinese → English (for always-include-both logic)
 _ROLE_BOTH_NAMES: dict[str, set[str]] = {
-    en: {en, zh}
-    for en, zh in {
-        "Bull Analyst": "多头分析师",
-        "Bear Analyst": "空头分析师",
-        "Aggressive Analyst": "激进分析师",
-        "Conservative Analyst": "保守分析师",
-        "Neutral Analyst": "中性分析师",
-        "Portfolio Manager": "投资组合经理",
-        "Research Manager": "研究经理",
-        "Trader": "交易员",
-        "Judge": "裁决者",
-    }.items()
+    role: set(variants) for role, variants in ROLE_VARIANT_NAMES.items()
 }
 
 
@@ -315,7 +327,7 @@ def get_aggressive_risk_instruction() -> str:
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
-            "作为激进分析师，你的自然倾向是寻找高回报机会，但若本轮证据确实指向风险，"
+            "作为激进风险分析师，你的自然倾向是寻找高回报机会，但若本轮证据确实指向风险，"
             "也可以选择逐步减仓或立即止损——重要的是结论与论点保持自洽，而非机械地执行激进立场。"
             "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
@@ -338,7 +350,7 @@ def get_conservative_risk_instruction() -> str:
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
-            "作为保守分析师，你的自然倾向是保护资产、控制回撤，但若本轮证据确实支持机会，"
+            "作为保守风险分析师，你的自然倾向是保护资产、控制回撤，但若本轮证据确实支持机会，"
             "也可以选择维持仓位甚至小幅加仓——重要的是结论与论点保持自洽，而非机械地执行保守立场。"
             "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
@@ -361,7 +373,7 @@ def get_neutral_risk_instruction() -> str:
     if _is_chinese_output():
         return (
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
-            "作为中性分析师，你的自然倾向是平衡两方观点，但若本轮证据明确偏向某一侧，"
+            "作为中性风险分析师，你的自然倾向是平衡两方观点，但若本轮证据明确偏向某一侧，"
             "也可以选择激进加仓或坚决减仓——重要的是结论与论点保持自洽，而非机械地居中立场。"
             "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
@@ -816,10 +828,12 @@ def strip_analyst_decision_summary(text: str) -> str:
     return cleaned.strip()
 
 
-_ALL_ROLE_NAMES: tuple[str, ...] = (
-    "多头分析师", "空头分析师", "激进分析师", "保守分析师", "中性分析师", "投资组合经理",
-    "Bull Analyst", "Bear Analyst", "Aggressive Analyst", "Conservative Analyst",
-    "Neutral Analyst", "Portfolio Manager",
+_ALL_ROLE_NAMES: tuple[str, ...] = tuple(
+    sorted(
+        {name for variants in ROLE_VARIANT_NAMES.values() for name in variants},
+        key=len,
+        reverse=True,
+    )
 )
 
 
@@ -1024,7 +1038,7 @@ def _looks_like_snapshot_rebuttal(value: str) -> bool:
         return True
 
     keywords = (
-        "对手", "空头分析师", "多头分析师", "激进分析师", "保守分析师", "中性分析师",
+        "对手", "空头分析师", "多头分析师", "激进风险分析师", "保守风险分析师", "中性风险分析师",
         "bull analyst", "bear analyst", "aggressive analyst", "conservative analyst",
         "neutral analyst", "忽略", "误判", "高估", "低估", "但", "然而", "却", "反驳",
         "质疑", "难以成立", "does not hold", "missed", "ignored", "however", "but ",
@@ -1043,7 +1057,7 @@ def _looks_like_snapshot_new_content(value: str) -> bool:
 
     lowered = normalized.lower()
     bad_starts = (
-        "空头分析师，", "多头分析师，", "激进分析师，", "保守分析师，", "中性分析师，",
+        "空头分析师，", "多头分析师，", "激进风险分析师，", "保守风险分析师，", "中性风险分析师，",
         "bear analyst,", "bull analyst,", "aggressive analyst,", "conservative analyst,",
         "neutral analyst,",
         "我理解你对", "让我用", "各位", "大家", "我们必须",
@@ -1373,6 +1387,8 @@ def strip_role_prefix(text: str, role: str) -> str:
     import re
 
     candidates = _ROLE_BOTH_NAMES.get(role, {role, localize_role_name(role)})
+    ordered_candidates = sorted(candidates, key=len, reverse=True)
+    candidate_pattern = "|".join(re.escape(name) for name in ordered_candidates)
 
     # 1. Strip leading markdown heading line(s) that contain the role name
     lines = text.split("\n")
@@ -1394,8 +1410,7 @@ def strip_role_prefix(text: str, role: str) -> str:
         break
 
     # 3. Remove mid-text self-labeling: 'role：' or 'role: ' at the start of any line
-    pattern = "|".join(re.escape(name) for name in candidates)
-    text = re.sub(r"(?m)^(?:" + pattern + r")[：:] *", "", text)
+    text = re.sub(r"(?m)^(?:" + candidate_pattern + r")[：:] *", "", text)
 
     # 4. Strip leading greeting sentences (e.g. '你好，空头分析师。' / '空头分析师，你好。')
     # Match one or two greeting sentences at the very start (up to first period/exclamation).
@@ -1407,6 +1422,18 @@ def strip_role_prefix(text: str, role: str) -> str:
         re.UNICODE,
     )
     text = _GREETING_RE.sub("", text).lstrip()
+
+    # 5. Strip repeated bare self-labels and explicit self-introductions.
+    text = re.sub(
+        r"^(?:(?:" + candidate_pattern + r")(?:[，,。！!：:\-]\s*)+)",
+        "",
+        text,
+    ).lstrip()
+    text = re.sub(
+        r"^(?:我是|作为)(?:一名)?(?:" + candidate_pattern + r")(?:[，,。！!：:\-]\s*)*",
+        "",
+        text,
+    ).lstrip()
 
     return text.strip()
 
@@ -1423,6 +1450,24 @@ def strip_feedback_snapshot(text: str) -> str:
     if best_idx == -1:
         return text.strip()
     return text[:best_idx].strip()
+
+
+def normalize_chinese_manager_terms(text: str) -> str:
+    """Normalize Chinese manager wording without altering snapshot semantics."""
+    normalized = normalize_chinese_role_terms(text or "")
+    if not normalized or not _is_chinese_output():
+        return normalized
+
+    body = strip_feedback_snapshot(normalized)
+    snapshot = extract_feedback_snapshot(normalized)
+    body = (
+        body.replace("本轮双方论点势均力敌", "整场辩论中双方论据势均力敌")
+        .replace("本轮双方", "整场辩论双方")
+        .replace("本轮辩论", "整场辩论")
+    ).strip()
+    if snapshot:
+        return f"{body}\n\n{snapshot}".strip()
+    return body
 
 
 def build_debate_brief(snapshots: dict[str, str], latest_speaker: str = "") -> str:
@@ -1571,6 +1616,13 @@ CHINESE_ROLE_TERM_REPLACEMENTS = {
     "牛派投资者": "多头投资者",
     "牛观点": "多头观点",
     "牛派": "多头",
+    "激进分析师": "激进风险分析师",
+    "保守分析师": "保守风险分析师",
+    "中性分析师": "中性风险分析师",
+    "根本分析": "基本面分析",
+    "根本面分析": "基本面分析",
+    "辩论裁决": "辩论结论",
+    "判决结果": "综合结论",
 }
 CHINESE_ROLE_TERM_PATTERN = re.compile(
     "|".join(

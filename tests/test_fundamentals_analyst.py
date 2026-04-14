@@ -161,6 +161,31 @@ class FundamentalsAnalystTests(unittest.TestCase):
         self.assertIn("free cash flow", result["fundamentals_report"].lower())
         self.assertEqual(result["messages"][0].content, result["fundamentals_report"])
 
+    def test_fundamentals_analyst_normalizes_basic_fundamentals_wording(self):
+        llm = _CapturingLLM(
+            "# 根本分析\n\n已覆盖资产负债表、利润表、现金流、ROE、毛利率、净利率、资产负债率、自由现金流和增长。"
+        )
+        node = create_fundamentals_analyst(llm)
+
+        partial_result = AIMessage(
+            content="# 根本分析\n\n已覆盖资产负债表、利润表、现金流、ROE、毛利率、净利率、资产负债率、自由现金流和增长。"
+        )
+        state = {
+            "company_of_interest": "300750.SZ",
+            "trade_date": "2026-04-07",
+            "messages": [HumanMessage(content="请分析 300750.SZ 的财报和基本面")],
+        }
+
+        with patch(
+            "tradingagents.agents.analysts.fundamentals_analyst.run_tool_report_chain",
+            return_value=(partial_result, partial_result.content),
+        ):
+            result = node(state)
+
+        self.assertIn("基本面分析", result["fundamentals_report"])
+        self.assertNotIn("根本分析", result["fundamentals_report"])
+        self.assertEqual(result["messages"][0].content, result["fundamentals_report"])
+
 
 if __name__ == "__main__":
     unittest.main()

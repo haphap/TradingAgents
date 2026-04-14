@@ -1,6 +1,6 @@
 import unittest
 
-from cli.main import format_research_team_history, format_risk_management_history
+from cli.main import MessageBuffer, format_research_team_history, format_risk_management_history
 from tradingagents.dataflows.config import get_config, set_config
 from tradingagents.default_config import DEFAULT_CONFIG
 
@@ -55,20 +55,20 @@ class CliRoundFormattingTests(unittest.TestCase):
         formatted = format_research_team_history(debate_state)
 
         self.assertIn("### 第 1 轮", formatted)
-        self.assertIn("#### 多头分析师\n\n多头分析师: 第一轮多头观点", formatted)
+        self.assertIn("#### 多头分析师\n\n第一轮多头观点", formatted)
         self.assertIn("反馈快照:\n- 立场: 买入", formatted)
         self.assertIn("- 本轮新增与反驳: 强化多头", formatted)
         self.assertIn("金价走强", formatted)
         self.assertIn("估值担忧可控", formatted)
         self.assertIn("- 待验证: 跟踪量价", formatted)
-        self.assertIn("#### 空头分析师\n\n空头分析师: 第一轮空头观点", formatted)
+        self.assertIn("#### 空头分析师\n\n第一轮空头观点", formatted)
         self.assertIn("### 第 2 轮", formatted)
-        self.assertIn("#### 多头分析师\n\n多头分析师: 第二轮多头补充", formatted)
+        self.assertIn("#### 多头分析师\n\n第二轮多头补充", formatted)
         self.assertIn("更激进", formatted)
         self.assertIn("避险升级", formatted)
         self.assertIn("回撤是买点", formatted)
         self.assertIn("- 待验证: 盯并购兑现", formatted)
-        self.assertIn("#### 空头分析师\n\n空头分析师: 第二轮空头反驳", formatted)
+        self.assertIn("#### 空头分析师\n\n第二轮空头反驳", formatted)
         self.assertIn("转向更谨慎", formatted)
         self.assertIn("风险升高", formatted)
         self.assertIn("高位放量", formatted)
@@ -121,17 +121,17 @@ class CliRoundFormattingTests(unittest.TestCase):
         formatted = format_risk_management_history(risk_state)
 
         self.assertIn("### 第 1 轮", formatted)
-        self.assertIn("#### 激进分析师\n\nAggressive Analyst: Round 1 aggressive case", formatted)
+        self.assertIn("#### 激进风险分析师\n\nRound 1 aggressive case", formatted)
         self.assertIn("决策摘要:\n- 评级: SELL", formatted)
         self.assertIn("FEEDBACK SNAPSHOT:\n- Stance: Sell", formatted)
         self.assertIn("- New this round & rebuttal: More defensive", formatted)
         self.assertIn("Momentum broke", formatted)
         self.assertIn("Upside is capped", formatted)
         self.assertIn("- To verify: Watch liquidity", formatted)
-        self.assertIn("#### 保守分析师\n\nConservative Analyst: Round 1 conservative case", formatted)
-        self.assertIn("#### 中性分析师\n\nNeutral Analyst: Round 1 neutral case", formatted)
+        self.assertIn("#### 保守风险分析师\n\nRound 1 conservative case", formatted)
+        self.assertIn("#### 中性风险分析师\n\nRound 1 neutral case", formatted)
         self.assertIn("### 第 2 轮", formatted)
-        self.assertIn("#### 激进分析师\n\nAggressive Analyst: Round 2 aggressive follow-up", formatted)
+        self.assertIn("#### 激进风险分析师\n\nRound 2 aggressive follow-up", formatted)
         self.assertIn("### 投资组合经理结论\nPortfolio Manager: Final allocation", formatted)
 
     def test_inferred_snapshot_shows_snapshot_without_review_heading(self):
@@ -178,7 +178,7 @@ class CliRoundFormattingTests(unittest.TestCase):
         formatted = format_research_team_history(debate_state)
 
         self.assertIn("### 研究经理结论", formatted)
-        self.assertIn("## 辩论裁决", formatted)
+        self.assertIn("## 辩论结论", formatted)
         self.assertIn("## 行为逻辑", formatted)
         self.assertIn("## 持仓建议", formatted)
         self.assertIn("#### 反馈快照摘要", formatted)
@@ -186,7 +186,26 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("需求验证节奏的约束", formatted)
         self.assertIn("空头高估了估值压缩速度", formatted)
         self.assertNotIn("(完整内容见:", formatted)
-        self.assertLess(formatted.index("## 辩论裁决"), formatted.index("#### 反馈快照摘要"))
+        self.assertLess(formatted.index("## 辩论结论"), formatted.index("#### 反馈快照摘要"))
+
+    def test_research_manager_normalizes_judicial_wording_to_debate_conclusion(self):
+        debate_state = {
+            "bull_history": "",
+            "bear_history": "",
+            "judge_decision": (
+                "## 辩论裁决\n"
+                "判决结果：本轮双方论点势均力敌。\n\n"
+                "## 行为逻辑\n"
+                "等待更多盈利兑现信号后再提高仓位。"
+            ),
+        }
+
+        formatted = format_research_team_history(debate_state)
+
+        self.assertIn("## 辩论结论", formatted)
+        self.assertIn("综合结论：整场辩论中双方论据势均力敌。", formatted)
+        self.assertNotIn("判决结果", formatted)
+        self.assertNotIn("本轮双方论点势均力敌", formatted)
 
     def test_research_team_history_shows_decision_summary_outside_argument_body(self):
         debate_state = {
@@ -219,6 +238,27 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertNotIn("##### 决策摘要", formatted)
         self.assertLess(formatted.index("这是正文论证。"), formatted.index("决策摘要:\n- 评级: 增持"))
 
+    def test_risk_history_strips_duplicate_role_self_introduction(self):
+        risk_state = {
+            "aggressive_history": "",
+            "conservative_history": (
+                "保守分析师: 作为保守风险分析师，我必须再次强调高估值和库存风险。\n"
+                "反馈快照:\n"
+                "- 当前观点: 持有\n"
+                "- 发生了什么变化: 维持谨慎。\n"
+                "- 为什么变化: 风险收益比偏弱。\n"
+                "- 关键反驳: 不宜追高。\n"
+                "- 下一轮教训: 跟踪支撑位。"
+            ),
+            "neutral_history": "",
+            "judge_decision": "",
+        }
+
+        formatted = format_risk_management_history(risk_state)
+
+        self.assertIn("#### 保守风险分析师\n\n我必须再次强调高估值和库存风险。", formatted)
+        self.assertNotIn("#### 保守风险分析师\n\n作为保守风险分析师", formatted)
+
     def test_portfolio_manager_hides_snapshot_summary(self):
         risk_state = {
             "aggressive_history": "",
@@ -239,6 +279,15 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("### 投资组合经理结论\nPortfolio Manager: Final allocation", formatted)
         self.assertNotIn("反馈快照摘要", formatted)
         self.assertNotIn("FEEDBACK SNAPSHOT", formatted)
+
+    def test_message_buffer_localizes_fundamentals_section_title_in_chinese(self):
+        buffer = MessageBuffer()
+        buffer.init_for_analysis(["fundamentals"])
+        buffer.update_report_section("fundamentals_report", "财务质量稳健。")
+
+        self.assertIn("### 基本面分析\n财务质量稳健。", buffer.current_report)
+        self.assertIn("### 基本面分析\n财务质量稳健。", buffer.final_report)
+        self.assertNotIn("根本分析", buffer.final_report)
 
 
 if __name__ == "__main__":
