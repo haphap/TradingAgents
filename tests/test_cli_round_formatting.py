@@ -1,6 +1,13 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from cli.main import MessageBuffer, format_research_team_history, format_risk_management_history
+from cli.main import (
+    MessageBuffer,
+    format_research_team_history,
+    format_risk_management_history,
+    save_report_to_disk,
+)
 from tradingagents.dataflows.config import get_config, set_config
 from tradingagents.default_config import DEFAULT_CONFIG
 
@@ -351,6 +358,41 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("### 基本面分析\n财务质量稳健。", buffer.current_report)
         self.assertIn("### 基本面分析\n财务质量稳健。", buffer.final_report)
         self.assertNotIn("根本分析", buffer.final_report)
+
+    def test_save_report_to_disk_persists_complete_report_locally(self):
+        final_state = {
+            "market_report": "市场分析内容",
+            "sentiment_report": "情绪分析内容",
+            "news_report": "新闻分析内容",
+            "fundamentals_report": "基本面分析内容",
+            "investment_debate_state": {
+                "bull_history": "多头分析师: 多头观点",
+                "bear_history": "空头分析师: 空头观点",
+                "judge_decision": "## 辩论结论\n研究经理结论",
+                "judge_snapshot_path": "",
+            },
+            "trader_investment_plan": "交易计划内容",
+            "risk_debate_state": {
+                "aggressive_history": "激进风险分析师: 激进观点",
+                "conservative_history": "保守风险分析师: 保守观点",
+                "neutral_history": "中性风险分析师: 中性观点",
+                "judge_decision": "## 辩论结论\n投资组合经理结论\n\n最终交易建议: **持有**",
+                "judge_snapshot_path": "",
+            },
+            "final_trade_decision": "## 辩论结论\n投资组合经理结论\n\n最终交易建议: **持有**",
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            report_path = save_report_to_disk(
+                final_state,
+                "300750.SZ",
+                Path(tmpdir),
+            )
+
+            self.assertTrue(report_path.exists())
+            self.assertTrue((Path(tmpdir) / "4_risk" / "rounds.md").exists())
+            self.assertTrue((Path(tmpdir) / "5_portfolio" / "decision.md").exists())
+            self.assertIn("交易分析报告", report_path.read_text())
 
 
 if __name__ == "__main__":

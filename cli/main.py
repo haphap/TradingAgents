@@ -1480,8 +1480,20 @@ def run_analysis():
     # Post-analysis prompts (outside Live context for clean interaction)
     console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
 
-    # Prompt to save report
-    save_choice = typer.prompt("Save report?", default="Y").strip().upper()
+    try:
+        local_report_file = save_report_to_disk(
+            final_state,
+            selections["ticker"],
+            results_dir,
+        )
+        console.print(
+            f"[green]✓ Local report saved:[/green] {local_report_file.resolve()}"
+        )
+    except Exception as e:
+        console.print(f"[red]Error saving local report: {e}[/red]")
+
+    # Prompt to export an additional copy
+    save_choice = typer.prompt("Save another copy?", default="N").strip().upper()
     if save_choice in ("Y", "YES", ""):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         default_path = Path.cwd() / "reports" / f"{selections['ticker']}_{timestamp}"

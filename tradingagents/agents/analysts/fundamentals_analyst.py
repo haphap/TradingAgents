@@ -23,6 +23,19 @@ _FUNDAMENTAL_TOOL_OUTPUT_MARKERS = {
     "get_cashflow": ("# tushare cashflow for ", "# cash flow data for "),
     "get_income_statement": ("# tushare income statement for ", "# income statement data for "),
 }
+_INCOMPLETE_FUNDAMENTALS_MARKERS = (
+    "无法直接计算资产负债率",
+    "估值数据缺失",
+    "无股价",
+    "股价缺失",
+    "missing total assets",
+    "missing total liabilities",
+    "missing price",
+    "valuation data missing",
+    "unable to calculate debt to assets",
+    "缺少具体的 total assets",
+    "缺少具体的 total liabilities",
+)
 
 
 def _message_text(message) -> str:
@@ -56,6 +69,8 @@ def _missing_fundamental_tools(messages) -> list[str]:
 
 def _report_has_full_fundamentals_coverage(report: str) -> bool:
     normalized = (report or "").lower()
+    if any(marker in normalized for marker in _INCOMPLETE_FUNDAMENTALS_MARKERS):
+        return False
     required_keyword_groups = (
         ("balance sheet", "资产负债表"),
         ("income statement", "利润表", "revenue", "营收", "net income", "净利润"),
@@ -115,7 +130,9 @@ You must explicitly cover all of these sections in the final report:
 4. Cash flow analysis: operating cash flow, investing cash flow, financing cash flow, free cash flow, and capex implications.
 5. Core indicators: ROE, ROA if available, gross margin, net margin, debt-to-assets, OCF-to-revenue if available, plus revenue/profit growth signals from the latest comparable periods when available.
 
-If any statement or metric is unavailable, say that clearly instead of skipping it.
+The tool outputs may include `# Key snapshot` blocks with already-extracted figures. Prefer those concrete values first, then use the raw CSV for extra detail.
+If a value appears anywhere in the provided data, do not claim it is missing. In particular, do not say price, valuation, total assets, total liabilities, debt-to-assets, or ending cash are unavailable when they are present in the tool output.
+Only say a metric is unavailable when it truly does not appear in any provided tool result.
 Do not output tool calls. Write a detailed, data-backed markdown report and end with a markdown summary table.
 {instrument_context}{get_language_instruction()}
 
@@ -181,15 +198,7 @@ def create_fundamentals_analyst(llm):
         )
         report = normalize_chinese_role_terms(report) if report else report
 
-        needs_completion = (
-            not getattr(result, "tool_calls", None)
-            and (
-                not report
-                or not _report_has_full_fundamentals_coverage(report)
-                or bool(_missing_fundamental_tools([*state["messages"], result]))
-            )
-        )
-        if needs_completion:
+        if not getattr(result, "tool_calls", None):
             missing_tools = _missing_fundamental_tools([*state["messages"], result])
             completed_report = _rewrite_fundamentals_report(
                 llm,
@@ -202,7 +211,7 @@ def create_fundamentals_analyst(llm):
             if completed_report:
                 result = AIMessage(content=completed_report)
                 report = completed_report
-        elif report and not getattr(result, "tool_calls", None):
+        elif report:
             result = AIMessage(content=report)
 
         return {

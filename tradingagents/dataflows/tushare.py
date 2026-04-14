@@ -104,14 +104,255 @@ def _get_pro_client():
         raise DataVendorUnavailable(f"Failed to initialize tushare client: {exc}") from exc
 
 
-def _to_csv_with_header(df: pd.DataFrame, title: str) -> str:
+def _to_csv_with_header(
+    df: pd.DataFrame,
+    title: str,
+    summary_lines: list[str] | None = None,
+) -> str:
     if df is None or df.empty:
         return f"No {title.lower()} data found."
 
     header = f"# {title}\n"
     header += f"# Total records: {len(df)}\n"
     header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    if summary_lines:
+        header += "# Key snapshot\n"
+        header += "\n".join(summary_lines) + "\n\n"
     return header + df.to_csv(index=False)
+
+
+def _to_float(value) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_billions(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number / 1e8:.2f}亿 CNY"
+
+
+def _format_pct(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number:.2f}%"
+
+
+def _format_multiple(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number:.2f}x"
+
+
+def _format_price(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number:.2f} CNY/share"
+
+
+def _format_market_value_10k_cny(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number / 1e4:.2f}亿 CNY"
+
+
+def _append_if_present(
+    lines: list[str],
+    label: str,
+    value,
+    formatter: Callable | None = None,
+):
+    rendered = formatter(value) if formatter else value
+    if rendered is None or rendered == "":
+        return
+    lines.append(f"{label}: {rendered}")
+
+
+def _safe_ratio(numerator, denominator) -> float | None:
+    num = _to_float(numerator)
+    den = _to_float(denominator)
+    if num is None or den is None or den == 0:
+        return None
+    return num / den
+
+
+def _same_period_previous_year(df: pd.DataFrame) -> pd.Series | None:
+    if df is None or df.empty or "end_date" not in df.columns:
+        return None
+    latest_end = str(df.iloc[0]["end_date"])
+    if len(latest_end) != 8 or not latest_end.isdigit():
+        return None
+    prior_end = f"{int(latest_end[:4]) - 1}{latest_end[4:]}"
+    prior_rows = df[df["end_date"].astype(str) == prior_end]
+    if prior_rows.empty:
+        return None
+    return prior_rows.iloc[0]
+
+
+def _build_balance_sheet_summary(df: pd.DataFrame) -> list[str]:
+    if df is None or df.empty:
+        return []
+    row = df.iloc[0]
+    lines: list[str] = []
+    _append_if_present(lines, "Latest Report Date", row.get("end_date"))
+    _append_if_present(lines, "Total Assets", row.get("total_assets"), _format_billions)
+    _append_if_present(lines, "Total Liabilities", row.get("total_liab"), _format_billions)
+    _append_if_present(
+        lines,
+        "Equity Attributable to Shareholders",
+        row.get("total_hldr_eqy_exc_min_int"),
+        _format_billions,
+    )
+    debt_ratio = _safe_ratio(row.get("total_liab"), row.get("total_assets"))
+    if debt_ratio is not None:
+        lines.append(f"Asset-Liability Ratio: {debt_ratio * 100:.2f}%")
+    _append_if_present(
+        lines,
+        "Current Assets",
+        row.get("total_cur_assets"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Current Liabilities",
+        row.get("total_cur_liab"),
+        _format_billions,
+    )
+    current_ratio = _safe_ratio(row.get("total_cur_assets"), row.get("total_cur_liab"))
+    if current_ratio is not None:
+        lines.append(f"Current Ratio: {current_ratio:.2f}x")
+    _append_if_present(lines, "Cash", row.get("money_cap"), _format_billions)
+    _append_if_present(
+        lines,
+        "Accounts Receivable",
+        row.get("accounts_receiv"),
+        _format_billions,
+    )
+    _append_if_present(lines, "Inventories", row.get("inventories"), _format_billions)
+    _append_if_present(
+        lines,
+        "Contract Liabilities",
+        row.get("contract_liab"),
+        _format_billions,
+    )
+    return lines
+
+
+def _build_cashflow_summary(df: pd.DataFrame) -> list[str]:
+    if df is None or df.empty:
+        return []
+    row = df.iloc[0]
+    lines: list[str] = []
+    _append_if_present(lines, "Latest Report Date", row.get("end_date"))
+    _append_if_present(
+        lines,
+        "Operating Cash Flow",
+        row.get("n_cashflow_act"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Investing Cash Flow",
+        row.get("n_cashflow_inv_act"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Financing Cash Flow",
+        row.get("n_cash_flows_fnc_act"),
+        _format_billions,
+    )
+    free_cashflow = row.get("free_cashflow")
+    if _to_float(free_cashflow) is None:
+        operating_cash_flow = _to_float(row.get("n_cashflow_act"))
+        capex_cash = _to_float(row.get("c_pay_acq_const_fiolta"))
+        if operating_cash_flow is not None and capex_cash is not None:
+            free_cashflow = operating_cash_flow - capex_cash
+    _append_if_present(lines, "Free Cash Flow", free_cashflow, _format_billions)
+    _append_if_present(
+        lines,
+        "Ending Cash and Cash Equivalents",
+        row.get("c_cash_equ_end_period"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Beginning Cash and Cash Equivalents",
+        row.get("c_cash_equ_beg_period"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Cash Received from Sales",
+        row.get("c_fr_sale_sg"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Cash Paid for Goods and Services",
+        row.get("c_paid_goods_s"),
+        _format_billions,
+    )
+    _append_if_present(
+        lines,
+        "Capex Cash Outflow",
+        row.get("c_pay_acq_const_fiolta"),
+        _format_billions,
+    )
+    return lines
+
+
+def _build_income_statement_summary(df: pd.DataFrame) -> list[str]:
+    if df is None or df.empty:
+        return []
+    row = df.iloc[0]
+    lines: list[str] = []
+    _append_if_present(lines, "Latest Report Date", row.get("end_date"))
+    _append_if_present(lines, "Total Revenue", row.get("total_revenue"), _format_billions)
+    _append_if_present(
+        lines,
+        "Operating Profit",
+        row.get("operate_profit"),
+        _format_billions,
+    )
+    _append_if_present(lines, "Total Profit", row.get("total_profit"), _format_billions)
+    _append_if_present(lines, "Net Income", row.get("n_income"), _format_billions)
+    _append_if_present(
+        lines,
+        "Parent Net Income",
+        row.get("n_income_attr_p"),
+        _format_billions,
+    )
+    _append_if_present(lines, "R&D Expense", row.get("rd_exp"), _format_billions)
+    _append_if_present(lines, "EBIT", row.get("ebit"), _format_billions)
+    _append_if_present(lines, "EBITDA", row.get("ebitda"), _format_billions)
+
+    prior_row = _same_period_previous_year(df)
+    if prior_row is not None:
+        current_revenue = _to_float(row.get("total_revenue"))
+        prior_revenue = _to_float(prior_row.get("total_revenue"))
+        revenue_growth = None
+        if current_revenue is not None and prior_revenue not in (None, 0):
+            revenue_growth = (current_revenue - prior_revenue) / prior_revenue
+        if revenue_growth is not None:
+            lines.append(f"Revenue YoY (same period): {revenue_growth * 100:.2f}%")
+        current_profit = _to_float(row.get("n_income_attr_p"))
+        prior_profit = _to_float(prior_row.get("n_income_attr_p"))
+        profit_growth = None
+        if current_profit is not None and prior_profit not in (None, 0):
+            profit_growth = (current_profit - prior_profit) / prior_profit
+        if profit_growth is not None:
+            lines.append(f"Parent Net Income YoY (same period): {profit_growth * 100:.2f}%")
+    return lines
 
 
 def _filter_statement(df: pd.DataFrame, freq: str, curr_date: str | None) -> pd.DataFrame:
@@ -127,8 +368,29 @@ def _filter_statement(df: pd.DataFrame, freq: str, curr_date: str | None) -> pd.
     if freq.lower() == "annual" and "end_date" in output.columns:
         output = output[output["end_date"].astype(str).str.endswith("1231")]
 
-    sort_col = "end_date" if "end_date" in output.columns else output.columns[0]
-    output = output.sort_values(sort_col, ascending=False).head(8)
+    sort_cols = []
+    ascending = []
+    if "end_date" in output.columns:
+        sort_cols.append("end_date")
+        ascending.append(False)
+    if "update_flag" in output.columns:
+        output = output.assign(
+            _update_rank=pd.to_numeric(output["update_flag"], errors="coerce").fillna(0)
+        )
+        sort_cols.append("_update_rank")
+        ascending.append(False)
+    for col in ("ann_date", "f_ann_date"):
+        if col in output.columns:
+            sort_cols.append(col)
+            ascending.append(False)
+
+    sort_col = sort_cols[0] if sort_cols else output.columns[0]
+    output = output.sort_values(sort_cols or sort_col, ascending=ascending or False)
+    if "end_date" in output.columns:
+        output = output.drop_duplicates(subset=["end_date"], keep="first")
+    if "_update_rank" in output.columns:
+        output = output.drop(columns=["_update_rank"])
+    output = output.head(8)
     return output
 
 
@@ -361,50 +623,46 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     if latest_price is not None and not latest_price.empty:
         row = latest_price.sort_values("trade_date", ascending=False).iloc[0]
         if market == "a_share":
-            field_map = {
-                "trade_date": "Latest Trade Date",
-                "close": "Close",
-                "turnover_rate": "Turnover Rate",
-                "pe": "PE",
-                "pb": "PB",
-                "ps": "PS",
-                "dv_ratio": "Dividend Yield Ratio",
-                "total_mv": "Total Market Value",
-                "circ_mv": "Circulating Market Value",
+            field_specs = {
+                "trade_date": ("Latest Trade Date", None),
+                "close": ("Latest Close Price", _format_price),
+                "turnover_rate": ("Turnover Rate", _format_pct),
+                "pe": ("PE", _format_multiple),
+                "pb": ("PB", _format_multiple),
+                "ps": ("PS", _format_multiple),
+                "dv_ratio": ("Dividend Yield Ratio", _format_pct),
+                "total_mv": ("Total Market Value", _format_market_value_10k_cny),
+                "circ_mv": ("Circulating Market Value", _format_market_value_10k_cny),
             }
         else:
-            field_map = {
-                "trade_date": "Latest Trade Date",
-                "close": "Close",
-                "open": "Open",
-                "high": "High",
-                "low": "Low",
-                "pre_close": "Prev Close",
-                "change": "Change",
-                "pct_chg": "Pct Change",
-                "vol": "Volume",
-                "amount": "Amount",
+            field_specs = {
+                "trade_date": ("Latest Trade Date", None),
+                "close": ("Close", None),
+                "open": ("Open", None),
+                "high": ("High", None),
+                "low": ("Low", None),
+                "pre_close": ("Prev Close", None),
+                "change": ("Change", None),
+                "pct_chg": ("Pct Change", None),
+                "vol": ("Volume", None),
+                "amount": ("Amount", None),
             }
-        for field, label in field_map.items():
-            value = row.get(field)
-            if pd.notna(value):
-                lines.append(f"{label}: {value}")
+        for field, (label, formatter) in field_specs.items():
+            _append_if_present(lines, label, row.get(field), formatter)
 
     if fina_indicator is not None and not fina_indicator.empty:
         row = fina_indicator.sort_values("end_date", ascending=False).iloc[0]
-        field_map = {
-            "end_date": "Latest Financial Period",
-            "roe": "ROE",
-            "roa": "ROA",
-            "grossprofit_margin": "Gross Margin",
-            "netprofit_margin": "Net Margin",
-            "debt_to_assets": "Debt to Assets",
-            "ocf_to_or": "OCF to Revenue",
+        field_specs = {
+            "end_date": ("Latest Financial Period", None),
+            "roe": ("ROE", _format_pct),
+            "roa": ("ROA", _format_pct),
+            "grossprofit_margin": ("Gross Margin", _format_pct),
+            "netprofit_margin": ("Net Margin", _format_pct),
+            "debt_to_assets": ("Debt to Assets", _format_pct),
+            "ocf_to_or": ("OCF to Revenue", _format_pct),
         }
-        for field, label in field_map.items():
-            value = row.get(field)
-            if pd.notna(value):
-                lines.append(f"{label}: {value}")
+        for field, (label, formatter) in field_specs.items():
+            _append_if_present(lines, label, row.get(field), formatter)
     elif market == "hk":
         income = pro.hk_income(ts_code=ts_code, end_date=end_api)
         if income is not None and not income.empty:
@@ -433,13 +691,18 @@ def _statement_common(
     curr_date: str | None,
     fetcher: Callable,
     title: str,
+    summary_builder: Callable[[pd.DataFrame], list[str]] | None = None,
 ) -> str:
     pro = _get_pro_client()
     ts_code = _normalize_ts_code(ticker)
     market = _classify_market(ts_code)
     data = fetcher(pro, ts_code, market)
     filtered = _filter_statement(data, freq, curr_date)
-    return _to_csv_with_header(filtered, f"Tushare {title} for {ts_code} ({freq})")
+    return _to_csv_with_header(
+        filtered,
+        f"Tushare {title} for {ts_code} ({freq})",
+        summary_builder(filtered) if summary_builder else None,
+    )
 
 
 def get_balance_sheet(
@@ -459,6 +722,7 @@ def get_balance_sheet(
             else pro.us_balancesheet(ts_code=ts_code)
         ),
         "balance sheet",
+        _build_balance_sheet_summary,
     )
 
 
@@ -479,6 +743,7 @@ def get_cashflow(
             else pro.us_cashflow(ts_code=ts_code)
         ),
         "cashflow",
+        _build_cashflow_summary,
     )
 
 
@@ -499,6 +764,7 @@ def get_income_statement(
             else pro.us_income(ts_code=ts_code)
         ),
         "income statement",
+        _build_income_statement_summary,
     )
 
 
