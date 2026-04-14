@@ -1452,14 +1452,49 @@ def strip_feedback_snapshot(text: str) -> str:
     return text[:best_idx].strip()
 
 
+def strip_all_feedback_snapshots(text: str) -> str:
+    """Remove repeated feedback snapshot blocks from the visible body."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+
+    while True:
+        updated = strip_feedback_snapshot(cleaned)
+        if updated == cleaned:
+            return cleaned
+        cleaned = updated
+
+
 def normalize_chinese_manager_terms(text: str) -> str:
     """Normalize Chinese manager wording without altering snapshot semantics."""
     normalized = normalize_chinese_role_terms(text or "")
     if not normalized or not _is_chinese_output():
         return normalized
 
-    body = strip_feedback_snapshot(normalized)
-    snapshot = extract_feedback_snapshot(normalized)
+    has_explicit_snapshot = any(marker in normalized for marker in SNAPSHOT_MARKERS)
+    body = strip_all_feedback_snapshots(normalized)
+    snapshot = extract_feedback_snapshot(normalized) if has_explicit_snapshot else ""
+    replacements = (
+        ("## Debate Verdict", "## 辩论结论"),
+        ("## Debate Conclusion", "## 辩论结论"),
+        ("## Risk Debate Conclusion", "## 辩论结论"),
+        ("## Action Logic", "## 行为逻辑"),
+        ("## Positioning Recommendation", "## 持仓建议"),
+        ("## Executive Summary", "## 执行摘要"),
+        ("## Investment Thesis", "## 投资逻辑"),
+        ("Risk Debate Conclusion", "辩论结论"),
+        ("Debate Verdict", "辩论结论"),
+        ("Debate Conclusion", "辩论结论"),
+        ("Action Logic", "行为逻辑"),
+        ("Positioning Recommendation", "持仓建议"),
+        ("Executive Summary", "执行摘要"),
+        ("Investment Thesis", "投资逻辑"),
+        ("Time Horizon", "时间区间"),
+        ("time horizon", "时间区间"),
+        ("FINAL TRANSACTION PROPOSAL", "最终交易建议"),
+    )
+    for source, target in replacements:
+        body = body.replace(source, target)
     body = (
         body.replace("本轮双方论点势均力敌", "整场辩论中双方论据势均力敌")
         .replace("本轮双方", "整场辩论双方")

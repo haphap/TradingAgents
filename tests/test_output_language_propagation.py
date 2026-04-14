@@ -222,6 +222,9 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         self.assertIn("持有", prompt)
         self.assertIn("减持", prompt)
         self.assertIn("卖出", prompt)
+        self.assertIn("## 辩论结论", prompt)
+        self.assertIn("## 行为逻辑", prompt)
+        self.assertIn("## 持仓建议", prompt)
         self.assertIn("关键约束", prompt)
 
     def test_collaboration_stop_instruction_prefers_chinese_display(self):

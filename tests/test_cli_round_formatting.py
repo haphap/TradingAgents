@@ -188,6 +188,32 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertNotIn("(完整内容见:", formatted)
         self.assertLess(formatted.index("## 辩论结论"), formatted.index("#### 反馈快照摘要"))
 
+    def test_research_manager_dedupes_repeated_feedback_snapshots(self):
+        repeated_snapshot = (
+            "反馈快照:\n"
+            "- 立场: 增持——需求与盈利兑现仍占优。\n"
+            "- 本轮新增与反驳: 新增了对需求验证节奏的约束。\n"
+            "- 待验证: 跟踪订单、毛利率和客户资本开支。"
+        )
+        debate_state = {
+            "bull_history": "",
+            "bear_history": "",
+            "judge_decision": (
+                "## 辩论结论\n"
+                "多头证据更扎实，空头对估值风险的论证不足。\n\n"
+                "## 行为逻辑\n"
+                "先验证需求兑现，再决定是否继续加仓。\n\n"
+                "## 持仓建议\n"
+                "维持增持，回踩支撑再分批加仓。\n\n"
+                f"{repeated_snapshot}\n\n{repeated_snapshot}"
+            ),
+        }
+
+        formatted = format_research_team_history(debate_state)
+
+        self.assertEqual(formatted.count("反馈快照:"), 0)
+        self.assertEqual(formatted.count("#### 反馈快照摘要"), 1)
+
     def test_research_manager_normalizes_judicial_wording_to_debate_conclusion(self):
         debate_state = {
             "bull_history": "",
@@ -279,6 +305,43 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("### 投资组合经理结论\nPortfolio Manager: Final allocation", formatted)
         self.assertNotIn("反馈快照摘要", formatted)
         self.assertNotIn("FEEDBACK SNAPSHOT", formatted)
+
+    def test_risk_management_history_can_hide_portfolio_manager_block(self):
+        risk_state = {
+            "aggressive_history": "Aggressive Analyst: Round 1 aggressive case",
+            "conservative_history": "",
+            "neutral_history": "",
+            "judge_decision": "Portfolio Manager: Final allocation",
+        }
+
+        formatted = format_risk_management_history(risk_state, include_manager=False)
+
+        self.assertIn("#### 激进风险分析师", formatted)
+        self.assertNotIn("### 投资组合经理结论", formatted)
+
+    def test_portfolio_manager_normalizes_mixed_english_headings_and_terms(self):
+        risk_state = {
+            "aggressive_history": "",
+            "conservative_history": "",
+            "neutral_history": "",
+            "judge_decision": (
+                "## Debate Verdict\n"
+                "综合结论：应维持更谨慎的仓位。\n\n"
+                "## Action Logic\n"
+                "当前 time horizon 应控制在1-3个月，等待盈利确认后再决定是否加仓。\n\n"
+                "## Positioning Recommendation\n"
+                "维持持有，若支撑位失守则减仓。\n\n"
+                "最终交易建议: **持有**"
+            ),
+        }
+
+        formatted = format_risk_management_history(risk_state)
+
+        self.assertIn("## 辩论结论", formatted)
+        self.assertIn("## 行为逻辑", formatted)
+        self.assertIn("## 持仓建议", formatted)
+        self.assertIn("时间区间", formatted)
+        self.assertNotIn("time horizon", formatted.lower())
 
     def test_message_buffer_localizes_fundamentals_section_title_in_chinese(self):
         buffer = MessageBuffer()

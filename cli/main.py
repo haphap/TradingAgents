@@ -39,6 +39,7 @@ from tradingagents.agents.utils.agent_utils import (
     normalize_chinese_manager_terms,
     normalize_chinese_role_terms,
     strip_analyst_decision_summary,
+    strip_all_feedback_snapshots,
     strip_feedback_snapshot,
     strip_role_prefix,
 )
@@ -375,7 +376,7 @@ def _format_manager_decision(
     if not content:
         return ""
 
-    body = normalize_chinese_manager_terms(strip_feedback_snapshot(content))
+    body = normalize_chinese_manager_terms(strip_all_feedback_snapshots(content))
     snapshot_summary = ""
     if show_snapshot_summary:
         snapshot = normalize_chinese_role_terms(extract_feedback_snapshot(content))
@@ -415,7 +416,7 @@ def format_research_team_history(debate_state: dict) -> str:
     )
 
 
-def format_risk_management_history(risk_state: dict) -> str:
+def format_risk_management_history(risk_state: dict, include_manager: bool = True) -> str:
     output_language = get_output_language().strip().lower()
     manager_title = (
         "投资组合经理结论"
@@ -429,9 +430,9 @@ def format_risk_management_history(risk_state: dict) -> str:
             "Neutral Analyst": risk_state.get("neutral_history", ""),
         },
         RISK_SPEAKER_ALIASES,
-        manager_title=manager_title,
-        manager_content=risk_state.get("judge_decision", ""),
-        manager_snapshot_path=risk_state.get("judge_snapshot_path", ""),
+        manager_title=manager_title if include_manager else None,
+        manager_content=risk_state.get("judge_decision", "") if include_manager else "",
+        manager_snapshot_path=risk_state.get("judge_snapshot_path", "") if include_manager else "",
         manager_show_snapshot=False,
     )
 
@@ -933,7 +934,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
             risk_dir.mkdir(exist_ok=True)
             (risk_dir / "neutral.md").write_text(risk["neutral_history"])
             risk_parts.append((_localize_cli_role_title("Neutral Analyst"), risk["neutral_history"]))
-        formatted_risk = format_risk_management_history(risk)
+        formatted_risk = format_risk_management_history(risk, include_manager=False)
         if formatted_risk:
             risk_dir.mkdir(exist_ok=True)
             (risk_dir / "rounds.md").write_text(formatted_risk)
@@ -1036,7 +1037,7 @@ def display_complete_report(final_state):
     # IV. Risk Management Team
     if final_state.get("risk_debate_state"):
         risk = final_state["risk_debate_state"]
-        formatted_risk = format_risk_management_history(risk)
+        formatted_risk = format_risk_management_history(risk, include_manager=False)
         if formatted_risk:
             console.print(
                 Panel(
@@ -1404,7 +1405,18 @@ def run_analysis():
                 con_hist = risk_state.get("conservative_history", "").strip()
                 neu_hist = risk_state.get("neutral_history", "").strip()
                 judge = risk_state.get("judge_decision", "").strip()
-                formatted_risk = format_risk_management_history(risk_state)
+                formatted_risk = format_risk_management_history(
+                    risk_state, include_manager=False
+                )
+                formatted_portfolio = (
+                    _format_manager_decision(
+                        judge,
+                        risk_state.get("judge_snapshot_path", ""),
+                        show_snapshot_summary=False,
+                    )
+                    if judge
+                    else ""
+                )
 
                 if agg_hist:
                     if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
@@ -1415,9 +1427,9 @@ def run_analysis():
                 if neu_hist:
                     if message_buffer.agent_status.get("Neutral Analyst") != "completed":
                         message_buffer.update_agent_status("Neutral Analyst", "in_progress")
-                if formatted_risk:
+                if formatted_portfolio:
                     message_buffer.update_report_section(
-                        "final_trade_decision", formatted_risk
+                        "final_trade_decision", formatted_portfolio
                     )
                 if judge:
                     if message_buffer.agent_status.get("Portfolio Manager") != "completed":
@@ -1446,7 +1458,21 @@ def run_analysis():
 
         # Update final report sections
         for section in message_buffer.report_sections.keys():
-            if section in final_state:
+            if section == "investment_plan" and final_state.get("investment_debate_state"):
+                message_buffer.update_report_section(
+                    section,
+                    format_research_team_history(final_state["investment_debate_state"]),
+                )
+            elif section == "final_trade_decision" and final_state.get("risk_debate_state"):
+                message_buffer.update_report_section(
+                    section,
+                    _format_manager_decision(
+                        final_state["final_trade_decision"],
+                        final_state["risk_debate_state"].get("judge_snapshot_path", ""),
+                        show_snapshot_summary=False,
+                    ),
+                )
+            elif section in final_state:
                 message_buffer.update_report_section(section, final_state[section])
 
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
