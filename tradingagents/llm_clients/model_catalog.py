@@ -98,13 +98,6 @@ def get_model_options(provider: str, mode: str) -> List[ModelOption]:
     return MODEL_OPTIONS[provider.lower()][mode]
 
 
-def resolve_model_alias(provider: str, model: str) -> str:
-    """Map user-facing model aliases to the canonical provider model IDs."""
-    if provider.lower() == "ollama":
-        return OLLAMA_MODEL_ALIASES.get(model, model)
-    return model
-
-
 def get_known_models() -> Dict[str, List[str]]:
     """Build known model names from the shared CLI catalog."""
     return {
