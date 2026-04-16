@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 import pandas as pd
@@ -103,6 +104,60 @@ class QlibLocalTests(unittest.TestCase):
         ):
             with self.assertRaises(DataVendorUnavailable):
                 qlib_local._load_price_frame("300750.SZ", "2026-03-10")
+
+    def test_get_stock_raises_when_local_calendar_does_not_cover_requested_trading_day(self):
+        idx = pd.to_datetime(["2026-04-08"])
+        df = pd.DataFrame(
+            {
+                "open": [390.0],
+                "high": [395.0],
+                "low": [385.0],
+                "close": [391.3],
+                "volume": [1_000_000.0],
+                "amount": [391_300_000.0],
+            },
+            index=idx,
+        )
+        df.index.name = "Date"
+
+        with (
+            patch("tradingagents.dataflows.qlib_local._load_ohlcv", return_value=df),
+            patch(
+                "tradingagents.dataflows.qlib_local._load_calendar",
+                return_value=[datetime(2026, 4, 7), datetime(2026, 4, 8)],
+            ),
+        ):
+            with self.assertRaises(DataVendorUnavailable) as ctx:
+                qlib_local.get_stock("300750.SZ", "2026-03-01", "2026-04-13")
+
+        self.assertIn("trading calendar is stale", str(ctx.exception))
+        self.assertIn("2026-04-08", str(ctx.exception))
+
+    def test_get_stock_allows_weekend_request_when_calendar_reaches_prior_friday(self):
+        idx = pd.to_datetime(["2026-04-10"])
+        df = pd.DataFrame(
+            {
+                "open": [400.0],
+                "high": [405.0],
+                "low": [398.0],
+                "close": [402.0],
+                "volume": [1_100_000.0],
+                "amount": [442_200_000.0],
+            },
+            index=idx,
+        )
+        df.index.name = "Date"
+
+        with (
+            patch("tradingagents.dataflows.qlib_local._load_ohlcv", return_value=df),
+            patch(
+                "tradingagents.dataflows.qlib_local._load_calendar",
+                return_value=[datetime(2026, 4, 10)],
+            ),
+        ):
+            result = qlib_local.get_stock("300750.SZ", "2026-04-01", "2026-04-12")
+
+        self.assertIn("2026-04-10,400.0,405.0,398.0,402.0", result)
 
 
 if __name__ == "__main__":

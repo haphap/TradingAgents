@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Callable
@@ -172,7 +173,11 @@ def _append_if_present(
     formatter: Callable | None = None,
 ):
     rendered = formatter(value) if formatter else value
-    if rendered is None or rendered == "":
+    if rendered is None:
+        return
+    if not isinstance(rendered, str) and pd.isna(rendered):
+        return
+    if rendered == "":
         return
     lines.append(f"{label}: {rendered}")
 
@@ -196,6 +201,447 @@ def _same_period_previous_year(df: pd.DataFrame) -> pd.Series | None:
     if prior_rows.empty:
         return None
     return prior_rows.iloc[0]
+
+
+def _trim_text(value, max_chars: int = 220) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _format_wan_to_billions(value) -> str | None:
+    number = _to_float(value)
+    if number is None:
+        return None
+    return f"{number / 1e4:.2f}亿 CNY"
+
+
+def _prepare_latest_records(
+    df: pd.DataFrame,
+    cutoff_col: str | None = None,
+    cutoff: str | None = None,
+    sort_cols: tuple[str, ...] = (),
+    dedupe_cols: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    output = df.copy()
+    if cutoff and cutoff_col and cutoff_col in output.columns:
+        output = output[output[cutoff_col].astype(str) <= cutoff]
+    if output.empty:
+        return output
+
+    sort_by: list[str] = []
+    ascending: list[bool] = []
+    for col in sort_cols:
+        if col in output.columns:
+            sort_by.append(col)
+            ascending.append(False)
+    if "update_flag" in output.columns:
+        output = output.assign(
+            _update_rank=pd.to_numeric(output["update_flag"], errors="coerce").fillna(0)
+        )
+        sort_by.append("_update_rank")
+        ascending.append(False)
+
+    if sort_by:
+        output = output.sort_values(sort_by, ascending=ascending)
+    else:
+        output = output.sort_values(output.columns[0], ascending=False)
+
+    subset = [col for col in dedupe_cols if col in output.columns]
+    if subset:
+        output = output.drop_duplicates(subset=subset, keep="first")
+
+    if "_update_rank" in output.columns:
+        output = output.drop(columns=["_update_rank"])
+    return output
+
+
+def _build_growth_and_valuation_snapshot(
+    latest_price_row: pd.Series | None,
+    fina_indicator_row: pd.Series | None,
+) -> list[str]:
+    if fina_indicator_row is None:
+        return []
+
+    lines: list[str] = []
+    growth_specs = {
+        "Revenue YoY": "or_yoy",
+        "Net Profit YoY": "netprofit_yoy",
+        "Deducted Net Profit YoY": "dt_netprofit_yoy",
+        "Quarterly Revenue YoY": "q_sales_yoy",
+        "Quarterly Operating Profit QoQ": "q_op_qoq",
+    }
+    for label, field in growth_specs.items():
+        _append_if_present(lines, label, fina_indicator_row.get(field), _format_pct)
+
+    pe_value = _to_float(latest_price_row.get("pe")) if latest_price_row is not None else None
+    if pe_value is not None and pe_value > 0:
+        for label, field in (
+            ("Net Profit YoY", "netprofit_yoy"),
+            ("Deducted Net Profit YoY", "dt_netprofit_yoy"),
+            ("Revenue YoY", "or_yoy"),
+        ):
+            growth_value = _to_float(fina_indicator_row.get(field))
+            if growth_value is not None and growth_value > 0:
+                lines.append(f"PEG (using {label}): {pe_value / growth_value:.2f}x")
+                break
+    return lines
+
+
+def _build_rd_snapshot(income_df: pd.DataFrame) -> list[str]:
+    if income_df is None or income_df.empty:
+        return []
+
+    row = income_df.iloc[0]
+    lines: list[str] = []
+    _append_if_present(lines, "Latest Report Date", row.get("end_date"))
+    _append_if_present(lines, "R&D Expense", row.get("rd_exp"), _format_billions)
+
+    rd_exp = _to_float(row.get("rd_exp"))
+    total_revenue = _to_float(row.get("total_revenue"))
+    if rd_exp is not None and total_revenue not in (None, 0):
+        lines.append(f"R&D Intensity: {rd_exp / total_revenue * 100:.2f}%")
+
+    operate_profit = _to_float(row.get("operate_profit"))
+    if rd_exp is not None and operate_profit not in (None, 0):
+        lines.append(f"R&D / Operating Profit: {rd_exp / operate_profit * 100:.2f}%")
+
+    prior_row = _same_period_previous_year(income_df)
+    if prior_row is not None:
+        prior_rd_exp = _to_float(prior_row.get("rd_exp"))
+        if rd_exp is not None and prior_rd_exp not in (None, 0):
+            lines.append(
+                f"R&D Expense YoY (same period): {(rd_exp - prior_rd_exp) / prior_rd_exp * 100:.2f}%"
+            )
+    return lines
+
+
+def _build_main_business_snapshot(
+    company_df: pd.DataFrame | None,
+    main_business_df: pd.DataFrame | None,
+    end_api: str,
+) -> list[str]:
+    lines: list[str] = []
+
+    if company_df is not None and not company_df.empty:
+        row = company_df.iloc[0]
+        _append_if_present(lines, "Main Business Summary", _trim_text(row.get("main_business"), 320))
+        _append_if_present(lines, "Business Scope", _trim_text(row.get("business_scope"), 260))
+
+    prepared = _prepare_latest_records(
+        main_business_df,
+        cutoff_col="end_date",
+        cutoff=end_api,
+        sort_cols=("end_date",),
+        dedupe_cols=("end_date", "bz_item"),
+    )
+    if prepared.empty:
+        return lines
+
+    latest_end = str(prepared.iloc[0]["end_date"])
+    latest = prepared[prepared["end_date"].astype(str) == latest_end].copy()
+    if latest.empty or "bz_sales" not in latest.columns:
+        return lines
+
+    latest = latest[latest["bz_sales"].notna()].sort_values("bz_sales", ascending=False)
+    if latest.empty:
+        return lines
+
+    disclosed_sales = pd.to_numeric(latest["bz_sales"], errors="coerce").fillna(0).sum()
+    lines.append(f"Latest Segment Period: {latest_end}")
+    for _, segment in latest.head(3).iterrows():
+        pieces = [f"Segment: {segment.get('bz_item')}"]
+        sales_value = _to_float(segment.get("bz_sales"))
+        sales_text = _format_billions(sales_value)
+        if sales_text is not None:
+            pieces.append(f"Sales: {sales_text}")
+        if sales_value is not None and disclosed_sales > 0:
+            pieces.append(
+                f"Share of disclosed segment sales: {sales_value / disclosed_sales * 100:.2f}%"
+            )
+        segment_margin = _safe_ratio(segment.get("bz_profit"), segment.get("bz_sales"))
+        if segment_margin is not None:
+            pieces.append(f"Segment Margin: {segment_margin * 100:.2f}%")
+        lines.append(" | ".join(pieces))
+    return lines
+
+
+def _build_earnings_guidance_snapshot(
+    forecast_df: pd.DataFrame | None,
+    express_df: pd.DataFrame | None,
+    end_api: str,
+    latest_actual_end: str | None,
+    total_market_value_10k: float | None,
+) -> list[str]:
+    lines: list[str] = []
+
+    prepared_forecast = _prepare_latest_records(
+        forecast_df,
+        cutoff_col="ann_date",
+        cutoff=end_api,
+        sort_cols=("ann_date", "end_date", "first_ann_date"),
+        dedupe_cols=("end_date",),
+    )
+    if not prepared_forecast.empty:
+        row = prepared_forecast.iloc[0]
+        _append_if_present(lines, "Latest Forecast Announcement Date", row.get("ann_date"))
+        _append_if_present(lines, "Latest Forecast Period", row.get("end_date"))
+        _append_if_present(lines, "Forecast Net Profit Min", row.get("net_profit_min"), _format_wan_to_billions)
+        _append_if_present(lines, "Forecast Net Profit Max", row.get("net_profit_max"), _format_wan_to_billions)
+        _append_if_present(lines, "Forecast Change Min", row.get("p_change_min"), _format_pct)
+        _append_if_present(lines, "Forecast Change Max", row.get("p_change_max"), _format_pct)
+        _append_if_present(lines, "Forecast Summary", _trim_text(row.get("summary"), 180))
+        _append_if_present(lines, "Forecast Reason", _trim_text(row.get("change_reason"), 260))
+
+        forecast_period = str(row.get("end_date")) if pd.notna(row.get("end_date")) else None
+        forecast_min = _to_float(row.get("net_profit_min"))
+        forecast_max = _to_float(row.get("net_profit_max"))
+        forecast_midpoint = None
+        if forecast_min is not None and forecast_max is not None:
+            forecast_midpoint = (forecast_min + forecast_max) / 2
+        elif forecast_min is not None:
+            forecast_midpoint = forecast_min
+        elif forecast_max is not None:
+            forecast_midpoint = forecast_max
+
+        if latest_actual_end and forecast_period and forecast_period > latest_actual_end:
+            _append_if_present(
+                lines,
+                "Forecast Net Profit Midpoint",
+                forecast_midpoint,
+                _format_wan_to_billions,
+            )
+            if (
+                total_market_value_10k is not None
+                and total_market_value_10k > 0
+                and forecast_midpoint is not None
+                and forecast_midpoint > 0
+            ):
+                lines.append(
+                    "Forward PE (market cap / forecast net profit midpoint): "
+                    f"{total_market_value_10k / forecast_midpoint:.2f}x"
+                )
+        elif latest_actual_end:
+            lines.append(
+                "Forward PE Status: Latest available forecast is not newer than "
+                f"the latest reported financial period {latest_actual_end}."
+            )
+        return lines
+
+    prepared_express = _prepare_latest_records(
+        express_df,
+        cutoff_col="ann_date",
+        cutoff=end_api,
+        sort_cols=("ann_date", "end_date"),
+        dedupe_cols=("end_date",),
+    )
+    if not prepared_express.empty:
+        row = prepared_express.iloc[0]
+        _append_if_present(lines, "Latest Earnings Express Period", row.get("end_date"))
+        _append_if_present(lines, "Earnings Express Revenue", row.get("revenue"), _format_billions)
+        _append_if_present(lines, "Earnings Express Net Income", row.get("n_income"), _format_billions)
+        _append_if_present(lines, "Earnings Express Summary", _trim_text(row.get("perf_summary"), 180))
+
+    if latest_actual_end:
+        lines.append(
+            "Forward PE Status: No current earnings guidance newer than "
+            f"the latest reported financial period {latest_actual_end} was found."
+        )
+    return lines
+
+
+def _extract_peer_keywords(company_df: pd.DataFrame | None) -> list[str]:
+    if company_df is None or company_df.empty:
+        return []
+    row = company_df.iloc[0]
+    text = " ".join(
+        filter(
+            None,
+            [
+                _trim_text(row.get("main_business"), 600),
+                _trim_text(row.get("business_scope"), 600),
+                _trim_text(row.get("introduction"), 600),
+            ],
+        )
+    )
+    if not text:
+        return []
+
+    strong_keywords = (
+        "动力电池",
+        "锂电池",
+        "电池系统",
+        "电池材料",
+        "电池回收",
+        "磷酸铁锂",
+        "三元材料",
+    )
+    broad_keywords = ("储能",)
+
+    matched_strong_keywords = [keyword for keyword in strong_keywords if keyword in text]
+    if matched_strong_keywords:
+        return matched_strong_keywords[:4]
+    return [keyword for keyword in broad_keywords if keyword in text][:2]
+
+
+def _load_keyword_peer_candidates(pro, keywords: list[str]) -> pd.DataFrame:
+    if not keywords:
+        return pd.DataFrame()
+
+    company_frames = [
+        pro.stock_company(exchange="SSE"),
+        pro.stock_company(exchange="SZSE"),
+        pro.stock_company(exchange="BSE"),
+    ]
+    companies = pd.concat(company_frames, ignore_index=True)
+    business_text = (
+        companies.get("main_business", pd.Series(dtype=object)).fillna("")
+        + " "
+        + companies.get("business_scope", pd.Series(dtype=object)).fillna("")
+    )
+    keyword_pattern = "|".join(re.escape(keyword) for keyword in keywords)
+    matches = companies[business_text.str.contains(keyword_pattern, regex=True)]
+    if matches.empty:
+        return matches
+    return matches[["ts_code"]].drop_duplicates()
+
+
+def _build_peer_comparison_snapshot(
+    pro,
+    ts_code: str,
+    industry: str | None,
+    latest_trade_date: str | None,
+    latest_price_row: pd.Series | None,
+    fina_indicator_row: pd.Series | None,
+    start_api_400d: str,
+    end_api: str,
+    company_df: pd.DataFrame | None = None,
+) -> list[str]:
+    if industry is None or pd.isna(industry) or latest_trade_date is None or pd.isna(latest_trade_date):
+        return []
+
+    peer_universe = pro.stock_basic(fields="ts_code,name,industry,market,list_status")
+    if peer_universe is None or peer_universe.empty:
+        return []
+
+    peers = peer_universe[
+        (peer_universe["industry"] == industry)
+        & (peer_universe["list_status"] == "L")
+        & (peer_universe["ts_code"] != ts_code)
+    ]
+    if peers.empty:
+        return []
+
+    peer_basis = f"same Tushare industry '{industry}'"
+    keyword_candidates = _load_keyword_peer_candidates(pro, _extract_peer_keywords(company_df))
+    if not keyword_candidates.empty:
+        keyword_peers = peers.merge(keyword_candidates, on="ts_code", how="inner")
+        if len(keyword_peers) >= 3:
+            peers = keyword_peers
+            keywords_display = ", ".join(_extract_peer_keywords(company_df))
+            peer_basis = (
+                f"same Tushare industry '{industry}' and business keywords [{keywords_display}]"
+            )
+
+    peer_valuation = pro.daily_basic(
+        trade_date=latest_trade_date,
+        fields="ts_code,close,pe,pb,ps,total_mv",
+    )
+    if peer_valuation is None or peer_valuation.empty:
+        return []
+
+    merged = peers.merge(peer_valuation, on="ts_code", how="inner")
+    merged = merged[merged["total_mv"].notna()].sort_values("total_mv", ascending=False)
+    sample = merged.head(3)
+    if sample.empty:
+        return []
+
+    lines = [
+        "Peer Sample Basis: "
+        f"{peer_basis}, ranked by market value on {latest_trade_date}."
+    ]
+    peer_metrics: list[dict[str, float]] = []
+
+    for _, peer in sample.iterrows():
+        peer_indicator = _prepare_latest_records(
+            pro.fina_indicator(ts_code=peer["ts_code"], start_date=start_api_400d, end_date=end_api),
+            cutoff_col="end_date",
+            cutoff=end_api,
+            sort_cols=("end_date", "ann_date"),
+            dedupe_cols=("end_date",),
+        )
+        peer_indicator_row = peer_indicator.iloc[0] if not peer_indicator.empty else None
+
+        pieces = [f"{peer.get('name')} ({peer.get('ts_code')})"]
+        _append_if_present(pieces, "Market Value", peer.get("total_mv"), _format_market_value_10k_cny)
+        _append_if_present(pieces, "PE", peer.get("pe"), _format_multiple)
+        _append_if_present(pieces, "PB", peer.get("pb"), _format_multiple)
+        _append_if_present(pieces, "PS", peer.get("ps"), _format_multiple)
+        if peer_indicator_row is not None:
+            _append_if_present(pieces, "ROE", peer_indicator_row.get("roe"), _format_pct)
+            _append_if_present(
+                pieces,
+                "Net Profit YoY",
+                peer_indicator_row.get("netprofit_yoy"),
+                _format_pct,
+            )
+        lines.append("Peer Sample: " + " | ".join(pieces))
+
+        peer_metrics.append(
+            {
+                "pe": _to_float(peer.get("pe")),
+                "pb": _to_float(peer.get("pb")),
+                "ps": _to_float(peer.get("ps")),
+                "roe": _to_float(peer_indicator_row.get("roe")) if peer_indicator_row is not None else None,
+                "netprofit_yoy": (
+                    _to_float(peer_indicator_row.get("netprofit_yoy"))
+                    if peer_indicator_row is not None
+                    else None
+                ),
+            }
+        )
+
+    comparisons: list[str] = []
+    target_metric_map = {
+        "PE": _to_float(latest_price_row.get("pe")) if latest_price_row is not None else None,
+        "PB": _to_float(latest_price_row.get("pb")) if latest_price_row is not None else None,
+        "PS": _to_float(latest_price_row.get("ps")) if latest_price_row is not None else None,
+        "ROE": _to_float(fina_indicator_row.get("roe")) if fina_indicator_row is not None else None,
+        "Net Profit YoY": (
+            _to_float(fina_indicator_row.get("netprofit_yoy"))
+            if fina_indicator_row is not None
+            else None
+        ),
+    }
+    peer_metric_map = {
+        "PE": "pe",
+        "PB": "pb",
+        "PS": "ps",
+        "ROE": "roe",
+        "Net Profit YoY": "netprofit_yoy",
+    }
+    for label, metric_key in peer_metric_map.items():
+        values = [item[metric_key] for item in peer_metrics if item.get(metric_key) is not None]
+        target_value = target_metric_map[label]
+        if not values or target_value is None:
+            continue
+        median_value = float(pd.Series(values).median())
+        suffix = "%" if "YoY" in label or label == "ROE" else "x"
+        comparisons.append(
+            f"{label}: target {target_value:.2f}{suffix} vs sample median {median_value:.2f}{suffix}"
+        )
+    if comparisons:
+        lines.append("Target vs Peer Median: " + " | ".join(comparisons))
+
+    return lines
 
 
 def _build_balance_sheet_summary(df: pd.DataFrame) -> list[str]:
@@ -335,6 +781,13 @@ def _build_income_statement_summary(df: pd.DataFrame) -> list[str]:
     _append_if_present(lines, "R&D Expense", row.get("rd_exp"), _format_billions)
     _append_if_present(lines, "EBIT", row.get("ebit"), _format_billions)
     _append_if_present(lines, "EBITDA", row.get("ebitda"), _format_billions)
+    rd_exp = _to_float(row.get("rd_exp"))
+    total_revenue = _to_float(row.get("total_revenue"))
+    if rd_exp is not None and total_revenue not in (None, 0):
+        lines.append(f"R&D Intensity: {rd_exp / total_revenue * 100:.2f}%")
+    operate_profit = _to_float(row.get("operate_profit"))
+    if rd_exp is not None and operate_profit not in (None, 0):
+        lines.append(f"R&D / Operating Profit: {rd_exp / operate_profit * 100:.2f}%")
 
     prior_row = _same_period_previous_year(df)
     if prior_row is not None:
@@ -352,6 +805,9 @@ def _build_income_statement_summary(df: pd.DataFrame) -> list[str]:
             profit_growth = (current_profit - prior_profit) / prior_profit
         if profit_growth is not None:
             lines.append(f"Parent Net Income YoY (same period): {profit_growth * 100:.2f}%")
+        prior_rd_exp = _to_float(prior_row.get("rd_exp"))
+        if rd_exp is not None and prior_rd_exp not in (None, 0):
+            lines.append(f"R&D Expense YoY (same period): {(rd_exp - prior_rd_exp) / prior_rd_exp * 100:.2f}%")
     return lines
 
 
@@ -555,6 +1011,11 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     end_api = curr_dt.strftime("%Y%m%d")
     start_api_40d = (curr_dt - timedelta(days=40)).strftime("%Y%m%d")
     start_api_400d = (curr_dt - timedelta(days=400)).strftime("%Y%m%d")
+    stock_company = None
+    main_business = None
+    earnings_forecast = None
+    earnings_express = None
+    income_statement = None
 
     if market == "a_share":
         basic = pro.stock_basic(
@@ -571,6 +1032,11 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
             start_date=start_api_400d,
             end_date=end_api,
         )
+        stock_company = pro.stock_company(ts_code=ts_code)
+        main_business = pro.fina_mainbz(ts_code=ts_code, type="P")
+        earnings_forecast = pro.forecast(ts_code=ts_code)
+        earnings_express = pro.express(ts_code=ts_code)
+        income_statement = _filter_statement(pro.income(ts_code=ts_code), "quarterly", curr_date)
     elif market == "hk":
         basic = pro.hk_basic(ts_code=ts_code)
         latest_price = pro.hk_daily(ts_code=ts_code, start_date=start_api_40d, end_date=end_api)
@@ -580,14 +1046,22 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
         latest_price = pro.us_daily(ts_code=ts_code, start_date=start_api_40d, end_date=end_api)
         fina_indicator = None
 
-    lines = [
+    overview_lines = [
         f"Ticker: {ts_code}",
         f"Market: {market}",
         f"Reference date: {curr_date}",
     ]
+    company_profile_lines: list[str] = []
+    valuation_lines: list[str] = []
+    growth_lines: list[str] = []
+    rd_lines: list[str] = []
+    business_lines: list[str] = []
+    guidance_lines: list[str] = []
+    peer_lines: list[str] = []
 
+    basic_row = None
     if basic is not None and not basic.empty:
-        row = basic.iloc[0]
+        basic_row = basic.iloc[0]
         if market == "a_share":
             field_map = {
                 "name": "Name",
@@ -616,12 +1090,13 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
                 "delist_date": "Delist Date",
             }
         for field, label in field_map.items():
-            value = row.get(field)
+            value = basic_row.get(field)
             if pd.notna(value):
-                lines.append(f"{label}: {value}")
+                company_profile_lines.append(f"{label}: {value}")
 
+    latest_price_row = None
     if latest_price is not None and not latest_price.empty:
-        row = latest_price.sort_values("trade_date", ascending=False).iloc[0]
+        latest_price_row = latest_price.sort_values("trade_date", ascending=False).iloc[0]
         if market == "a_share":
             field_specs = {
                 "trade_date": ("Latest Trade Date", None),
@@ -648,41 +1123,112 @@ def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
                 "amount": ("Amount", None),
             }
         for field, (label, formatter) in field_specs.items():
-            _append_if_present(lines, label, row.get(field), formatter)
+            _append_if_present(valuation_lines, label, latest_price_row.get(field), formatter)
 
+    fina_indicator_row = None
     if fina_indicator is not None and not fina_indicator.empty:
-        row = fina_indicator.sort_values("end_date", ascending=False).iloc[0]
-        field_specs = {
-            "end_date": ("Latest Financial Period", None),
-            "roe": ("ROE", _format_pct),
-            "roa": ("ROA", _format_pct),
-            "grossprofit_margin": ("Gross Margin", _format_pct),
-            "netprofit_margin": ("Net Margin", _format_pct),
-            "debt_to_assets": ("Debt to Assets", _format_pct),
-            "ocf_to_or": ("OCF to Revenue", _format_pct),
-        }
-        for field, (label, formatter) in field_specs.items():
-            _append_if_present(lines, label, row.get(field), formatter)
+        prepared_fina_indicator = _prepare_latest_records(
+            fina_indicator,
+            cutoff_col="end_date",
+            cutoff=end_api,
+            sort_cols=("end_date", "ann_date"),
+            dedupe_cols=("end_date",),
+        )
+        fina_indicator_row = (
+            prepared_fina_indicator.iloc[0] if not prepared_fina_indicator.empty else None
+        )
+        if fina_indicator_row is not None:
+            field_specs = {
+                "end_date": ("Latest Financial Period", None),
+                "roe": ("ROE", _format_pct),
+                "roa": ("ROA", _format_pct),
+                "grossprofit_margin": ("Gross Margin", _format_pct),
+                "netprofit_margin": ("Net Margin", _format_pct),
+                "debt_to_assets": ("Debt to Assets", _format_pct),
+                "ocf_to_or": ("OCF to Revenue", _format_pct),
+            }
+            for field, (label, formatter) in field_specs.items():
+                _append_if_present(valuation_lines, label, fina_indicator_row.get(field), formatter)
+        growth_lines.extend(_build_growth_and_valuation_snapshot(latest_price_row, fina_indicator_row))
     elif market == "hk":
         income = pro.hk_income(ts_code=ts_code, end_date=end_api)
         if income is not None and not income.empty:
             latest_end = income["end_date"].astype(str).max()
-            lines.append(f"Latest Financial Period: {latest_end}")
+            valuation_lines.append(f"Latest Financial Period: {latest_end}")
             sample = income[income["end_date"].astype(str) == latest_end].head(12)
             for _, rec in sample.iterrows():
-                lines.append(f"{rec.get('ind_name')}: {rec.get('ind_value')}")
+                valuation_lines.append(f"{rec.get('ind_name')}: {rec.get('ind_value')}")
     else:
         income = pro.us_income(ts_code=ts_code, end_date=end_api)
         if income is not None and not income.empty:
             latest_end = income["end_date"].astype(str).max()
-            lines.append(f"Latest Financial Period: {latest_end}")
+            valuation_lines.append(f"Latest Financial Period: {latest_end}")
             sample = income[income["end_date"].astype(str) == latest_end].head(12)
             for _, rec in sample.iterrows():
-                lines.append(f"{rec.get('ind_name')}: {rec.get('ind_value')}")
+                valuation_lines.append(f"{rec.get('ind_name')}: {rec.get('ind_value')}")
+
+    if market == "a_share":
+        if stock_company is not None and not stock_company.empty:
+            stock_company_row = stock_company.iloc[0]
+            _append_if_present(company_profile_lines, "Employees", stock_company_row.get("employees"))
+            _append_if_present(
+                company_profile_lines,
+                "Company Introduction",
+                _trim_text(stock_company_row.get("introduction"), 280),
+            )
+
+        rd_lines.extend(_build_rd_snapshot(income_statement))
+        business_lines.extend(_build_main_business_snapshot(stock_company, main_business, end_api))
+
+        latest_actual_end = None
+        if fina_indicator_row is not None and pd.notna(fina_indicator_row.get("end_date")):
+            latest_actual_end = str(fina_indicator_row.get("end_date"))
+        elif income_statement is not None and not income_statement.empty:
+            latest_actual_end = str(income_statement.iloc[0].get("end_date"))
+
+        total_market_value_10k = (
+            _to_float(latest_price_row.get("total_mv")) if latest_price_row is not None else None
+        )
+        guidance_lines.extend(
+            _build_earnings_guidance_snapshot(
+                earnings_forecast,
+                earnings_express,
+                end_api,
+                latest_actual_end,
+                total_market_value_10k,
+            )
+        )
+        peer_lines.extend(
+            _build_peer_comparison_snapshot(
+                pro,
+                ts_code,
+                basic_row.get("industry") if basic_row is not None else None,
+                str(latest_price_row.get("trade_date")) if latest_price_row is not None else None,
+                latest_price_row,
+                fina_indicator_row,
+                start_api_400d,
+                end_api,
+                stock_company,
+            )
+        )
 
     header = f"# Tushare fundamentals for {ts_code}\n"
     header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-    return header + "\n".join(lines)
+    sections = []
+    for title, section_lines in (
+        ("Overview", overview_lines),
+        ("Company Profile", company_profile_lines),
+        ("Valuation and Profitability Snapshot", valuation_lines),
+        ("Growth and PEG Snapshot", growth_lines),
+        ("R&D Snapshot", rd_lines),
+        ("Main Business and Segment Mix", business_lines),
+        ("Earnings Guidance and Forward Valuation", guidance_lines),
+        ("Peer Comparison Snapshot", peer_lines),
+    ):
+        if section_lines:
+            sections.append(f"## {title}\n" + "\n".join(section_lines))
+
+    return header + "\n\n".join(sections)
 
 
 def _statement_common(

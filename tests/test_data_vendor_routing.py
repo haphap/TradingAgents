@@ -45,6 +45,36 @@ class DataVendorRoutingTests(unittest.TestCase):
 
         self.assertEqual(result, "fallback-ok")
 
+    def test_chinese_ticker_falls_back_from_qlib_to_tushare_when_local_calendar_is_stale(self):
+        cfg = self._base_config()
+        cfg["data_vendors"]["technical_indicators"] = "qlib,tushare"
+        set_config(cfg)
+
+        touched = []
+
+        def _qlib(*_args, **_kwargs):
+            touched.append("qlib")
+            raise DataVendorUnavailable("Qlib local trading calendar is stale")
+
+        def _tushare(*_args, **_kwargs):
+            touched.append("tushare")
+            return "tushare-indicator"
+
+        with patch.dict(
+            VENDOR_METHODS,
+            {
+                "get_indicators": {
+                    "qlib": _qlib,
+                    "tushare": _tushare,
+                }
+            },
+            clear=False,
+        ):
+            result = route_to_vendor("get_indicators", "300750.SZ", "macd", "2026-04-13", 60)
+
+        self.assertEqual(result, "tushare-indicator")
+        self.assertEqual(touched, ["qlib", "tushare"])
+
     def test_tool_level_vendor_overrides_category_vendor(self):
         cfg = self._base_config()
         cfg["data_vendors"]["news_data"] = "yfinance"

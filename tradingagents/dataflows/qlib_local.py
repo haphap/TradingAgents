@@ -94,6 +94,42 @@ def _load_calendar() -> list[datetime]:
     return dates
 
 
+def _calendar_last_day() -> Optional[pd.Timestamp]:
+    cal = _load_calendar()
+    if not cal:
+        return None
+    return pd.Timestamp(cal[-1])
+
+
+def _last_weekday_on_or_before(date_value: pd.Timestamp) -> pd.Timestamp:
+    probe = pd.Timestamp(date_value)
+    while probe.weekday() >= 5:
+        probe -= pd.Timedelta(days=1)
+    return probe
+
+
+def _ensure_local_calendar_covers(end_date: str) -> None:
+    """Raise when the local qlib trading calendar stops before *end_date*."""
+    calendar_last_day = _calendar_last_day()
+    if calendar_last_day is None:
+        return
+
+    requested_end = pd.Timestamp(datetime.strptime(end_date, "%Y-%m-%d"))
+    if requested_end <= calendar_last_day:
+        return
+
+    # Weekend requests are still valid as long as local data reaches the prior Friday.
+    if requested_end.weekday() >= 5:
+        covered_weekday = _last_weekday_on_or_before(requested_end)
+        if calendar_last_day >= covered_weekday:
+            return
+
+    raise DataVendorUnavailable(
+        "Qlib local trading calendar is stale: last local trading day is "
+        f"{calendar_last_day.strftime('%Y-%m-%d')}, requested through {end_date}."
+    )
+
+
 def _date_to_cal_range(start_date: str, end_date: str) -> tuple[int, int]:
     """Return (start_idx, end_idx) inclusive in calendar for given date range."""
     cal = _load_calendar()
@@ -263,6 +299,7 @@ def _ensure_local_data_is_current(df: pd.DataFrame, instrument: str, end_date: s
     if df.empty:
         return
 
+    _ensure_local_calendar_covers(end_date)
     expected_last_day = _expected_last_trading_day(end_date)
     if expected_last_day is None:
         return

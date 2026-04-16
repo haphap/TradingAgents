@@ -1,9 +1,12 @@
+import copy
 import unittest
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from tradingagents.agents.analysts.fundamentals_analyst import create_fundamentals_analyst
+from tradingagents.dataflows.config import get_config, set_config
+from tradingagents.default_config import DEFAULT_CONFIG
 
 
 class _FakeResponse:
@@ -33,6 +36,15 @@ class _FakeTool:
 
 
 class FundamentalsAnalystTests(unittest.TestCase):
+    def setUp(self):
+        self.original_config = copy.deepcopy(get_config())
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+    def tearDown(self):
+        set_config(self.original_config)
+
     def test_fundamentals_analyst_backfills_missing_statements_before_final_report(self):
         llm = _CapturingLLM(
             "# 完整基本面报告\n\n已覆盖资产负债表、利润表、现金流、ROE、毛利率、净利率、资产负债率、自由现金流和增长。"
@@ -173,7 +185,63 @@ class FundamentalsAnalystTests(unittest.TestCase):
         state = {
             "company_of_interest": "300750.SZ",
             "trade_date": "2026-04-07",
-            "messages": [HumanMessage(content="请分析 300750.SZ 的财报和基本面")],
+            "messages": [
+                HumanMessage(content="请分析 300750.SZ 的财报和基本面"),
+                AIMessage(content="# Tushare fundamentals for 300750.SZ\nROE: 20.1"),
+                AIMessage(content="# Tushare balance sheet for 300750.SZ (quarterly)\nend_date,total_assets,total_liab"),
+                AIMessage(content="# Tushare cashflow for 300750.SZ (quarterly)\nend_date,n_cashflow_act,n_cashflow_inv_act"),
+                AIMessage(content="# Tushare income statement for 300750.SZ (quarterly)\nend_date,total_revenue,n_income_attr_p"),
+            ],
+        }
+
+        with (
+            patch(
+                "tradingagents.agents.analysts.fundamentals_analyst.run_tool_report_chain",
+                return_value=(partial_result, partial_result.content),
+            ),
+            patch(
+                "tradingagents.agents.analysts.fundamentals_analyst.get_fundamentals",
+                _FakeTool("get_fundamentals", "unused"),
+            ),
+            patch(
+                "tradingagents.agents.analysts.fundamentals_analyst.get_balance_sheet",
+                _FakeTool("get_balance_sheet", "unused"),
+            ),
+            patch(
+                "tradingagents.agents.analysts.fundamentals_analyst.get_cashflow",
+                _FakeTool("get_cashflow", "unused"),
+            ),
+            patch(
+                "tradingagents.agents.analysts.fundamentals_analyst.get_income_statement",
+                _FakeTool("get_income_statement", "unused"),
+            ),
+        ):
+            result = node(state)
+
+        self.assertIn("基本面分析", result["fundamentals_report"])
+        self.assertNotIn("根本分析", result["fundamentals_report"])
+        self.assertEqual(result["messages"][0].content, result["fundamentals_report"])
+
+    def test_fundamentals_analyst_uses_chinese_only_headings_and_analysis_focused_prompt(self):
+        llm = _CapturingLLM(
+            "一、Fundamentals Overview and Valuation Snapshot (核心概览与估值快照)\n"
+            "根据最新工具输出数据，公司估值处于合理区间。\n\n"
+            "二、Growth, R&D, and Business Composition Analysis (增长、研发与主营业务分析)\n"
+            "研发投入维持高位。"
+        )
+        node = create_fundamentals_analyst(llm)
+
+        partial_result = AIMessage(content="只罗列数据。")
+        state = {
+            "company_of_interest": "300750.SZ",
+            "trade_date": "2026-04-07",
+            "messages": [
+                HumanMessage(content="请深度分析 300750.SZ 的财报和基本面"),
+                AIMessage(content="# Tushare fundamentals for 300750.SZ\n## Growth and PEG Snapshot\nPEG: 0.58x"),
+                AIMessage(content="# Tushare balance sheet for 300750.SZ (quarterly)\nend_date,total_assets,total_liab"),
+                AIMessage(content="# Tushare cashflow for 300750.SZ (quarterly)\nend_date,n_cashflow_act,n_cashflow_inv_act"),
+                AIMessage(content="# Tushare income statement for 300750.SZ (quarterly)\nend_date,total_revenue,n_income_attr_p,rd_exp"),
+            ],
         }
 
         with patch(
@@ -182,9 +250,13 @@ class FundamentalsAnalystTests(unittest.TestCase):
         ):
             result = node(state)
 
-        self.assertIn("基本面分析", result["fundamentals_report"])
-        self.assertNotIn("根本分析", result["fundamentals_report"])
-        self.assertEqual(result["messages"][0].content, result["fundamentals_report"])
+        self.assertIn("一、核心概览与估值快照", result["fundamentals_report"])
+        self.assertNotIn("Fundamentals Overview and Valuation Snapshot", result["fundamentals_report"])
+        self.assertNotIn("根据最新工具输出数据", result["fundamentals_report"])
+        rewrite_prompt = llm.prompts[0]
+        self.assertIn("只保留中文标题", rewrite_prompt)
+        self.assertIn("禁止只罗列数字", rewrite_prompt)
+        self.assertIn("同业对比部分", rewrite_prompt)
 
 
 if __name__ == "__main__":
