@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -6,6 +7,7 @@ from cli.main import (
     MessageBuffer,
     format_research_team_history,
     format_risk_management_history,
+    process_chunk_messages,
     save_report_to_disk,
 )
 from tradingagents.dataflows.config import get_config, set_config
@@ -358,6 +360,31 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("### 基本面分析\n财务质量稳健。", buffer.current_report)
         self.assertIn("### 基本面分析\n财务质量稳健。", buffer.final_report)
         self.assertNotIn("根本分析", buffer.final_report)
+
+    def test_process_chunk_messages_records_all_unique_messages_and_tool_calls(self):
+        class FakeMessage:
+            def __init__(self, message_id, content, tool_calls=None):
+                self.id = message_id
+                self.content = content
+                self.tool_calls = tool_calls or []
+
+        buffer = MessageBuffer()
+        chunk = {
+            "messages": [
+                FakeMessage("m1", "first", [{"name": "tool_a", "args": {"symbol": "AAPL"}}]),
+                FakeMessage("m2", "second"),
+                FakeMessage("m1", "duplicate", [{"name": "tool_b", "args": {"symbol": "MSFT"}}]),
+            ]
+        }
+
+        with patch("cli.main.classify_message_type", side_effect=lambda message: ("Agent", message.content)):
+            process_chunk_messages(chunk, buffer)
+
+        self.assertEqual([content for _, _, content in buffer.messages], ["first", "second"])
+        self.assertEqual(
+            [(name, args) for _, name, args in buffer.tool_calls],
+            [("tool_a", {"symbol": "AAPL"})],
+        )
 
     def test_save_report_to_disk_persists_complete_report_locally(self):
         final_state = {
