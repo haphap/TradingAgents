@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -41,6 +42,20 @@ class OpenAICompatibleBaseUrlTests(unittest.TestCase):
         client.get_llm()
 
         self.assertNotIn("base_url", mock_chat.call_args[1])
+
+    @patch.dict(os.environ, {"MINIMAX_API_KEY": "minimax-key"}, clear=False)
+    @patch("tradingagents.llm_clients.openai_client.NormalizedChatOpenAI")
+    def test_minimax_provider_uses_default_base_url_and_api_key(self, mock_chat):
+        client = create_llm_client(
+            provider="minimax",
+            model="MiniMax-M2.7",
+        )
+        client.get_llm()
+
+        kwargs = mock_chat.call_args[1]
+        self.assertEqual(kwargs["base_url"], "https://api.minimax.chat/v1")
+        self.assertEqual(kwargs["api_key"], "minimax-key")
+        self.assertEqual(kwargs["model"], "MiniMax-M2.7")
 
 
 if __name__ == "__main__":

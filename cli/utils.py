@@ -226,9 +226,16 @@ def select_ollama_model(base_url: str) -> str:
     ).ask().strip()
 
 
-def select_shallow_thinking_agent(provider, base_url: str = None) -> str:
-    """Select shallow thinking llm engine using an interactive selection."""
+def _prompt_custom_model_id() -> str:
+    """Prompt the user to enter a provider-specific custom model ID."""
+    return questionary.text(
+        "Enter model ID:",
+        validate=lambda x: len(x.strip()) > 0 or "Please enter a model ID.",
+    ).ask().strip()
 
+
+def _select_model(provider: str, mode: str, base_url: str | None = None) -> str:
+    """Select a model for the given provider and mode."""
     if provider.lower() == "openrouter":
         return select_openrouter_model()
 
@@ -236,10 +243,10 @@ def select_shallow_thinking_agent(provider, base_url: str = None) -> str:
         return select_ollama_model(base_url)
 
     choice = questionary.select(
-        "Select Your [Quick-Thinking LLM Engine]:",
+        f"Select Your [{mode.title()}-Thinking LLM Engine]:",
         choices=[
             questionary.Choice(display, value=value)
-            for display, value in get_model_options(provider, "quick")
+            for display, value in get_model_options(provider, mode)
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -253,52 +260,34 @@ def select_shallow_thinking_agent(provider, base_url: str = None) -> str:
 
     if choice is None:
         console.print(
-            "\n[red]No shallow thinking llm engine selected. Exiting...[/red]"
+            f"\n[red]No {mode} thinking llm engine selected. Exiting...[/red]"
         )
         exit(1)
 
+    if choice == "custom":
+        return _prompt_custom_model_id()
+
     return choice
+
+
+def select_shallow_thinking_agent(provider, base_url: str = None) -> str:
+    """Select shallow thinking llm engine using an interactive selection."""
+    return _select_model(provider, "quick", base_url)
 
 
 def select_deep_thinking_agent(provider, base_url: str = None) -> str:
     """Select deep thinking llm engine using an interactive selection."""
-
-    if provider.lower() == "openrouter":
-        return select_openrouter_model()
-
-    if provider.lower() == "ollama" and base_url:
-        return select_ollama_model(base_url)
-
-    choice = questionary.select(
-        "Select Your [Deep-Thinking LLM Engine]:",
-        choices=[
-            questionary.Choice(display, value=value)
-            for display, value in get_model_options(provider, "deep")
-        ],
-        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
-        style=questionary.Style(
-            [
-                ("selected", "fg:magenta noinherit"),
-                ("highlighted", "fg:magenta noinherit"),
-                ("pointer", "fg:magenta noinherit"),
-            ]
-        ),
-    ).ask()
-
-    if choice is None:
-        console.print("\n[red]No deep thinking llm engine selected. Exiting...[/red]")
-        exit(1)
-
-    return choice
+    return _select_model(provider, "deep", base_url)
 
 def select_llm_provider() -> tuple[str, str]:
-    """Select the OpenAI api url using interactive selection."""
+    """Select the LLM provider and its default API endpoint."""
     # Define provider options as (display_name, provider_key, endpoint)
     BASE_URLS = [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
         ("Google", "google", "https://generativelanguage.googleapis.com/v1"),
         ("Anthropic", "anthropic", "https://api.anthropic.com/"),
         ("xAI", "xai", "https://api.x.ai/v1"),
+        ("MiniMax", "minimax", "https://api.minimax.chat/v1"),
         ("Openrouter", "openrouter", "https://openrouter.ai/api/v1"),
         ("Ollama / llama.cpp", "ollama", "http://localhost:4000/v1"),
     ]

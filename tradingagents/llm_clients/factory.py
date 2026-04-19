@@ -3,6 +3,8 @@ from typing import Optional
 
 from .base_client import BaseLLMClient
 
+_OPENAI_COMPATIBLE_PROVIDERS = ("openai", "xai", "openrouter", "ollama", "minimax")
+
 
 def create_llm_client(
     provider: str,
@@ -13,7 +15,7 @@ def create_llm_client(
     """Create an LLM client for the specified provider.
 
     Args:
-        provider: LLM provider (openai, anthropic, google, xai, ollama, openrouter)
+        provider: LLM provider (openai, anthropic, google, xai, minimax, ollama, openrouter)
         model: Model name/identifier
         base_url: Optional base URL for API endpoint
         **kwargs: Additional provider-specific arguments
@@ -32,16 +34,10 @@ def create_llm_client(
     """
     provider_lower = provider.lower()
 
-    if provider_lower in ("openai", "ollama", "openrouter"):
+    if provider_lower in _OPENAI_COMPATIBLE_PROVIDERS:
         openai_module = import_module("tradingagents.llm_clients.openai_client")
         OpenAIClient = openai_module.OpenAIClient
         return OpenAIClient(model, base_url, provider=provider_lower, **kwargs)
-
-    if provider_lower == "xai":
-        openai_module = import_module("tradingagents.llm_clients.openai_client")
-        OpenAIClient = openai_module.OpenAIClient
-        return OpenAIClient(model, base_url, provider="xai", **kwargs)
-
     if provider_lower == "anthropic":
         anthropic_module = import_module("tradingagents.llm_clients.anthropic_client")
         AnthropicClient = anthropic_module.AnthropicClient

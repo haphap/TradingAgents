@@ -68,6 +68,20 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Grok 4.1 Fast (Non-Reasoning) - Speed optimized, 2M ctx", "grok-4-1-fast-non-reasoning"),
         ],
     },
+    "minimax": {
+        "quick": [
+            ("MiniMax M2.7 Highspeed - Fastest general model", "MiniMax-M2.7-highspeed"),
+            ("MiniMax M2.5 Highspeed - Lower-cost fast model", "MiniMax-M2.5-highspeed"),
+            ("MiniMax M2.1 - Legacy balanced model", "MiniMax-M2.1"),
+            ("Custom model ID", "custom"),
+        ],
+        "deep": [
+            ("MiniMax M2.7 - Strongest reasoning model", "MiniMax-M2.7"),
+            ("MiniMax M2.5 - Balanced reasoning/cost", "MiniMax-M2.5"),
+            ("MiniMax M2 - Legacy flagship model", "MiniMax-M2"),
+            ("Custom model ID", "custom"),
+        ],
+    },
     # OpenRouter models are fetched dynamically at CLI runtime.
     # No static entries needed; any model ID is accepted by the validator.
     "openrouter": {

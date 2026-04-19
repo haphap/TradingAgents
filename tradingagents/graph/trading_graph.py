@@ -309,15 +309,12 @@ class TradingAgentsGraph:
         }
 
         # Save to file
-        directory = Path(f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/")
+        directory = Path(self.config["results_dir"]) / self.ticker / "TradingAgentsStrategy_logs"
         directory.mkdir(parents=True, exist_ok=True)
 
-        with open(
-            f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/full_states_log_{trade_date}.json",
-            "w",
-            encoding="utf-8",
-        ) as f:
-            json.dump(self.log_states_dict, f, indent=4)
+        log_path = directory / f"full_states_log_{trade_date}.json"
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(self.log_states_dict[str(trade_date)], f, indent=4)
 
     def _fetch_returns(self, ticker: str, trade_date: str, holding_days: int = 5):
         """Fetch stock and benchmark returns after a trade date."""

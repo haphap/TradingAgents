@@ -128,6 +128,7 @@ export OPENAI_API_KEY=...          # OpenAI (GPT)
 export GOOGLE_API_KEY=...          # Google (Gemini)
 export ANTHROPIC_API_KEY=...       # Anthropic (Claude)
 export XAI_API_KEY=...             # xAI (Grok)
+export MINIMAX_API_KEY=...         # MiniMax
 export OPENROUTER_API_KEY=...      # OpenRouter
 export TUSHARE_TOKEN=...           # Tushare (A-share / HK / US price and fundamentals)
 export BRAVE_SEARCH_API_KEY=...    # Brave Search (news search)
@@ -139,6 +140,8 @@ Alternatively, copy `.env.example` to `.env` and fill in your keys:
 ```bash
 cp .env.example .env
 ```
+
+By default, TradingAgents stores runtime logs under `~/.tradingagents/logs` and cache data under `~/.tradingagents/cache`. Override them with `TRADINGAGENTS_RESULTS_DIR` and `TRADINGAGENTS_CACHE_DIR` if needed.
 
 ### CLI Usage
 
@@ -178,7 +181,7 @@ An interface will appear showing results as they load, letting you track the age
 
 ### Implementation Details
 
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, OpenRouter, and Ollama.
+We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, MiniMax, OpenRouter, and Ollama.
 
 ### Python Usage
 
@@ -202,7 +205,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # openai, google, anthropic, xai, openrouter, ollama
+config["llm_provider"] = "openai"        # openai, google, anthropic, xai, minimax, openrouter, ollama
 config["deep_think_llm"] = "gpt-5.4"     # Model for complex reasoning
 config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
 config["max_debate_rounds"] = 2
