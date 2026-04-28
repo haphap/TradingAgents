@@ -87,6 +87,19 @@ def truncate_response_for_prompt(text: str) -> str:
     return truncate_for_prompt(text, limit_key="response_context_char_limit", default_limit=3000)
 
 
+def join_memory_recommendations(memories: list[dict]) -> str:
+    """Render retrieved memory recommendations for prompt injection."""
+    if not memories:
+        return ""
+
+    recommendations = []
+    for record in memories:
+        recommendation = str(record.get("recommendation", "")).strip()
+        if recommendation:
+            recommendations.append(recommendation)
+    return "\n\n".join(recommendations)
+
+
 def get_snapshot_template(round_index: int = 1) -> str:
     if _is_chinese_output():
         return """反馈快照:
@@ -104,7 +117,8 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
     if _is_chinese_output():
         return (
             "反馈快照是对本轮核心内容的完整、详细记录，必须用自己的语言概括，禁止从正文中直接复制句子。\n"
-            "每个字段应展开2-4句，包含完整的逻辑链和具体数据，让读者无需阅读正文即可理解本轮论点的全貌：\n\n"
+            "每个字段应展开2-4句，包含完整的逻辑链和具体数据，让读者无需阅读正文即可理解本轮论点的全貌。"
+            "如需编号，只能使用阿拉伯数字，例如 1. 2. 3.，不要使用中文序号或圈号数字：\n\n"
             "「立场」：明确评级 + 核心理由 + 当前最关键的支撑或风险因素。"
             "如「维持减持——30倍PE在商品周期顶部严重透支，MACD死叉确认趋势转弱，"
             "36元支撑位一旦击穿将触发止损盘连锁卖出，下行目标看至32元」；\n\n"
@@ -113,16 +127,17 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
             "若本轮引入了新数据，必须解释该数据的含义、为何改变判断，以及它为什么让对手推论难以成立；"
             "若本轮没有新增数据，也要写出本轮最关键的增量判断，并顺带点明它反驳了对手的哪一点；\n\n"
             "「待验证」：列出2-3个下轮需跟踪的具体指标或事件，说明每个指标的阈值和触发含义。"
-            "如「①金价能否守稳4800美元——若跌破则确认地缘溢价消退，黄金收益贡献将从30%缩水至15%；"
-            "②Q2铜价走势——若跌破8000美元/吨则62%利润增速将面临均值回归压力；"
-            "③6月美联储议息——若维持高利率则紫金美元债务成本上升0.3-0.5个百分点」；\n\n"
+            "如「1. 金价能否守稳4800美元——若跌破则确认地缘溢价消退，黄金收益贡献将从30%缩水至15%；"
+            "2. Q2铜价走势——若跌破8000美元/吨则62%利润增速将面临均值回归压力；"
+            "3. 6月美联储议息——若维持高利率则紫金美元债务成本上升0.3-0.5个百分点」；\n\n"
             "【关键约束】：将你的上轮快照与本轮快照逐字段对比，确保「本轮新增与反驳」"
             "体现了本轮独有的信息增量，而不是复制正文或机械重复上轮表述。\n"
             "严禁开场白，严禁重复角色名，三项内容各不相同。"
         )
     return (
         "The feedback snapshot is a detailed, well-supported record of this round's key content. "
-        "Each field should be 2-4 sentences with complete logic chain and specific data, "
+        "Each field should be 2-4 sentences with complete logic chain and specific data. "
+        "Use Arabic numerals such as 1. 2. 3. for numbered items rather than circled digits or non-Arabic numbering, "
         "so the reader can understand the full picture without reading the main argument:\n\n"
         "'Stance': rating + core rationale + the single most critical supporting or risk factor right now. "
         "e.g. 'Maintain Sell — 30x PE at the top of a commodity cycle is severely stretched; "
@@ -131,9 +146,9 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         "First state the genuinely new evidence, framing, or data introduced this round, then explain how it weakens "
         "the opponent's latest claim. If a new metric appears, explain why it matters and why it undermines the opposing inference;\n\n"
         "'To verify': 2-3 specific indicators or events with thresholds and trigger meanings. "
-        "e.g. '① Copper holding above $8,000 — if it breaks, 62% profit growth faces mean-reversion; "
-        "② Fed June decision — if rates held, USD debt cost rises 30-50bps; "
-        "③ Q2 earnings capex — if above $5B, confirms sustainable expansion thesis'.\n\n"
+        "e.g. '1. Copper holding above $8,000 — if it breaks, 62% profit growth faces mean-reversion; "
+        "2. Fed June decision — if rates held, USD debt cost rises 30-50bps; "
+        "3. Q2 earnings capex — if above $5B, confirms sustainable expansion thesis'.\n\n"
         "KEY CONSTRAINT: Compare previous snapshot with this one field by field — "
         "'New this round & rebuttal' must contain real incremental content instead of copied body text or repeated phrasing.\n"
         "No greetings. No role names. No two fields alike."
@@ -181,6 +196,60 @@ def localize_role_name(role: str) -> str:
     return ROLE_LOCALIZATION_MAP.get(role, role) if _is_chinese_output() else role
 
 
+_CIRCLED_DIGIT_MAP = {
+    "①": "1",
+    "②": "2",
+    "③": "3",
+    "④": "4",
+    "⑤": "5",
+    "⑥": "6",
+    "⑦": "7",
+    "⑧": "8",
+    "⑨": "9",
+    "⑩": "10",
+}
+_CHINESE_NUMBERING_MAP = {
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
+
+
+def normalize_display_numbering(text: str) -> str:
+    """Normalize visible numbering to Arabic numerals."""
+    if not text:
+        return ""
+
+    normalized = text
+    for circled, digit in _CIRCLED_DIGIT_MAP.items():
+        normalized = re.sub(
+            rf"{re.escape(circled)}\s*",
+            f"{digit}. ",
+            normalized,
+        )
+
+    def _replace_heading(match: re.Match[str]) -> str:
+        numeral = _CHINESE_NUMBERING_MAP.get(match.group(2))
+        if numeral is None:
+            return match.group(0)
+        return f"{match.group(1)}{numeral}. "
+
+    normalized = re.sub(
+        r"(?m)^(\s*(?:#{1,6}\s*)?)([一二三四五六七八九十])[、.．]\s*",
+        _replace_heading,
+        normalized,
+    )
+    normalized = re.sub(r"(?m)^(\s*)（([一二三四五六七八九十])）\s*", _replace_heading, normalized)
+    return normalized
+
+
 # Reverse mapping: Chinese → English (for always-include-both logic)
 _ROLE_BOTH_NAMES: dict[str, set[str]] = {
     role: set(variants) for role, variants in ROLE_VARIANT_NAMES.items()
@@ -191,10 +260,11 @@ def normalize_chinese_role_terms(text: str) -> str:
     """Normalize user-facing Chinese role terms to a single preferred wording."""
     if not text:
         return ""
-    return CHINESE_ROLE_TERM_PATTERN.sub(
+    normalized = CHINESE_ROLE_TERM_PATTERN.sub(
         lambda match: CHINESE_ROLE_TERM_REPLACEMENTS[match.group(0)],
         text,
     )
+    return normalize_display_numbering(normalized)
 
 
 def localize_rating_term(term: str) -> str:
@@ -1495,11 +1565,14 @@ def normalize_chinese_manager_terms(text: str) -> str:
     )
     for source, target in replacements:
         body = body.replace(source, target)
+    body = re.sub(r"\b[Cc]atalyst timing\b", "催化节奏", body)
+    body = re.sub(r"\b[Tt]iming\b", "时机", body)
     body = (
         body.replace("本轮双方论点势均力敌", "整场辩论中双方论据势均力敌")
         .replace("本轮双方", "整场辩论双方")
         .replace("本轮辩论", "整场辩论")
-    ).strip()
+    )
+    body = normalize_display_numbering(body).strip()
     if snapshot:
         return f"{body}\n\n{snapshot}".strip()
     return body

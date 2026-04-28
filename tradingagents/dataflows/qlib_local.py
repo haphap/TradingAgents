@@ -82,7 +82,7 @@ def _load_calendar() -> list[datetime]:
     """
     cal_file = _get_data_path() / "calendars" / "day.txt"
     dates = []
-    with open(cal_file) as f:
+    with open(cal_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:

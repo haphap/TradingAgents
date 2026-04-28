@@ -1,5 +1,7 @@
 # TradingAgents/graph/signal_processing.py
 
+import re
+
 from langchain_openai import ChatOpenAI
 
 
@@ -61,6 +63,26 @@ class SignalProcessor:
         }
         for marker, rating in chinese_markers.items():
             if marker in full_signal:
+                return rating
+
+        for pattern, rating in (
+            (r"(?:RATING|RECOMMENDATION)\s*[:：]\s*\**\s*BUY\b", "BUY"),
+            (r"(?:RATING|RECOMMENDATION)\s*[:：]\s*\**\s*OVERWEIGHT\b", "OVERWEIGHT"),
+            (r"(?:RATING|RECOMMENDATION)\s*[:：]\s*\**\s*HOLD\b", "HOLD"),
+            (r"(?:RATING|RECOMMENDATION)\s*[:：]\s*\**\s*UNDERWEIGHT\b", "UNDERWEIGHT"),
+            (r"(?:RATING|RECOMMENDATION)\s*[:：]\s*\**\s*SELL\b", "SELL"),
+        ):
+            if re.search(pattern, text):
+                return rating
+
+        for pattern, rating in (
+            (r"(?:评级|建议)\s*[:：]\s*\**\s*买入", "BUY"),
+            (r"(?:评级|建议)\s*[:：]\s*\**\s*增持", "OVERWEIGHT"),
+            (r"(?:评级|建议)\s*[:：]\s*\**\s*持有", "HOLD"),
+            (r"(?:评级|建议)\s*[:：]\s*\**\s*减持", "UNDERWEIGHT"),
+            (r"(?:评级|建议)\s*[:：]\s*\**\s*卖出", "SELL"),
+        ):
+            if re.search(pattern, full_signal):
                 return rating
 
         return None

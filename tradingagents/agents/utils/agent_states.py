@@ -61,12 +61,15 @@ class RiskDebateState(TypedDict):
     conservative_snapshot_path: Annotated[str, "Path to full conservative snapshot file"]
     neutral_snapshot_path: Annotated[str, "Path to full neutral snapshot file"]
     judge_decision: Annotated[str, "Judge's decision"]
+    judge_snapshot: Annotated[str, "Latest portfolio manager feedback snapshot"]
+    judge_snapshot_path: Annotated[str, "Path to full portfolio manager snapshot file"]
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
 
 
 class AgentState(MessagesState):
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
+    past_context: Annotated[str, "Resolved lessons from prior decisions"]
 
     sender: Annotated[str, "Agent that sent this message"]
 

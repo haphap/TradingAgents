@@ -1,150 +1,282 @@
-"""Financial situation memory using BM25 for lexical similarity matching.
+from __future__ import annotations
 
-Uses BM25 (Best Matching 25) algorithm for retrieval - no API calls,
-no token limits, works offline with any LLM provider.
-"""
-
-from rank_bm25 import BM25Okapi
-from typing import List, Tuple
+from dataclasses import dataclass
+from pathlib import Path
 import re
+from typing import Any
 
 
-class FinancialSituationMemory:
-    """Memory system for storing and retrieving financial situations using BM25."""
+_RATING_MAP = {
+    "BUY": "Buy",
+    "OVERWEIGHT": "Overweight",
+    "HOLD": "Hold",
+    "UNDERWEIGHT": "Underweight",
+    "SELL": "Sell",
+    "买入": "Buy",
+    "增持": "Overweight",
+    "持有": "Hold",
+    "减持": "Underweight",
+    "卖出": "Sell",
+}
+_RATING_LABEL_PATTERN = re.compile(
+    r"(?im)^\s*(?:\d+\.\s*)?\**(?:FINAL TRANSACTION PROPOSAL|Rating|最终交易建议|评级)\**\s*[:：]\s*\**\s*"
+    r"(BUY|OVERWEIGHT|HOLD|UNDERWEIGHT|SELL|Buy|Overweight|Hold|Underweight|Sell|买入|增持|持有|减持|卖出)\s*\**\s*$"
+)
+_RATING_WORD_PATTERN = re.compile(
+    r"\b(BUY|OVERWEIGHT|HOLD|UNDERWEIGHT|SELL|Buy|Overweight|Hold|Underweight|Sell)\b|"
+    r"(买入|增持|持有|减持|卖出)"
+)
 
-    def __init__(self, name: str, config: dict = None):
-        """Initialize the memory system.
 
-        Args:
-            name: Name identifier for this memory instance
-            config: Configuration dict (kept for API compatibility, not used for BM25)
-        """
-        self.name = name
-        self.documents: List[str] = []
-        self.recommendations: List[str] = []
-        self.bm25 = None
+def _canonical_rating(decision: str) -> str:
+    text = (decision or "").strip()
+    match = _RATING_LABEL_PATTERN.search(text)
+    if match:
+        return _RATING_MAP[match.group(1).upper() if match.group(1).isascii() else match.group(1)]
+
+    prose_match = _RATING_WORD_PATTERN.search(text)
+    if prose_match:
+        token = prose_match.group(0)
+        return _RATING_MAP.get(token.upper(), _RATING_MAP.get(token, "Hold"))
+    return "Hold"
+
+
+def _format_percent(value: float) -> str:
+    return f"{value:+.1%}"
+
+
+@dataclass
+class _Entry:
+    date: str
+    ticker: str
+    rating: str
+    decision: str
+    pending: bool = True
+    raw: str | None = None
+    alpha: str | None = None
+    holding: str | None = None
+    reflection: str = ""
+
+
+class TradingMemoryLog:
+    """Persistent append-only trading memory with deferred reflection."""
+
+    _SEPARATOR = "\n\n<!-- trading-memory-entry -->\n\n"
+    _PENDING_PATTERN = re.compile(r"^\[(?P<date>[^|]+)\|(?P<ticker>[^|]+)\|(?P<rating>[^|]+)\| pending\]$")
+    _RESOLVED_PATTERN = re.compile(
+        r"^\[(?P<date>[^|]+)\|(?P<ticker>[^|]+)\|(?P<rating>[^|]+)\| (?P<raw>[^|]+)\| (?P<alpha>[^|]+)\| (?P<holding>[^\]]+)\]$"
+    )
+
+    def __init__(self, config: dict[str, Any] | None = None):
         cfg = config or {}
-        self.min_similarity = float(cfg.get("memory_min_similarity", 0.15))
-
-    def _tokenize(self, text: str) -> List[str]:
-        """Tokenize text for BM25 indexing.
-
-        Simple whitespace + punctuation tokenization with lowercasing.
-        """
-        # Lowercase and split on non-alphanumeric characters
-        tokens = re.findall(r'\b\w+\b', text.lower())
-        return tokens
-
-    def _rebuild_index(self):
-        """Rebuild the BM25 index after adding documents."""
-        if self.documents:
-            tokenized_docs = [self._tokenize(doc) for doc in self.documents]
-            self.bm25 = BM25Okapi(tokenized_docs)
+        configured_path = cfg.get("memory_log_path")
+        if configured_path:
+            self.log_path = Path(configured_path)
+        elif cfg.get("data_cache_dir"):
+            self.log_path = Path(cfg["data_cache_dir"]) / "trading_memory.md"
         else:
-            self.bm25 = None
+            self.log_path = None
+        self.max_entries = cfg.get("memory_log_max_entries")
 
-    def add_situations(self, situations_and_advice: List[Tuple[str, str]]):
-        """Add financial situations and their corresponding advice.
+    def _ensure_parent(self) -> None:
+        if self.log_path is not None:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        Args:
-            situations_and_advice: List of tuples (situation, recommendation)
-        """
-        for situation, recommendation in situations_and_advice:
-            self.documents.append(situation)
-            self.recommendations.append(recommendation)
+    def _read_text(self) -> str:
+        if self.log_path is None or not self.log_path.exists():
+            return ""
+        return self.log_path.read_text(encoding="utf-8")
 
-        # Rebuild BM25 index with new documents
-        self._rebuild_index()
+    def _write_entries(self, entries: list[_Entry]) -> None:
+        if self.log_path is None:
+            return
+        self._ensure_parent()
+        tmp_path = self.log_path.with_suffix(".tmp")
+        content = self._SEPARATOR.join(self._format_entry(entry) for entry in entries).strip()
+        if content:
+            content += self._SEPARATOR
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(self.log_path)
 
-    def get_memories(self, current_situation: str, n_matches: int = 1) -> List[dict]:
-        """Find matching recommendations using BM25 similarity.
+    def _format_entry(self, entry: _Entry) -> str:
+        if entry.pending:
+            header = f"[{entry.date} | {entry.ticker} | {entry.rating} | pending]"
+            return f"{header}\n\nDECISION:\n{entry.decision.strip()}"
+        header = f"[{entry.date} | {entry.ticker} | {entry.rating} | {entry.raw} | {entry.alpha} | {entry.holding}]"
+        return (
+            f"{header}\n\n"
+            f"DECISION:\n{entry.decision.strip()}\n\n"
+            f"REFLECTION:\n{entry.reflection.strip()}"
+        )
 
-        Args:
-            current_situation: The current financial situation to match against
-            n_matches: Number of top matches to return
+    def _parse_entry(self, raw_entry: str) -> _Entry | None:
+        entry = raw_entry.strip()
+        if not entry:
+            return None
+        lines = entry.splitlines()
+        if not lines:
+            return None
+        header = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+        if not body.startswith("DECISION:\n"):
+            return None
 
-        Returns:
-            List of dicts with matched_situation, recommendation, and similarity_score
-        """
-        if not self.documents or self.bm25 is None:
+        pending_match = self._PENDING_PATTERN.match(header)
+        resolved_match = self._RESOLVED_PATTERN.match(header)
+        decision_block = body[len("DECISION:\n") :]
+        reflection = ""
+        if "\n\nREFLECTION:\n" in decision_block:
+            decision, reflection = decision_block.split("\n\nREFLECTION:\n", 1)
+        else:
+            decision = decision_block
+
+        if pending_match:
+            return _Entry(
+                date=pending_match.group("date").strip(),
+                ticker=pending_match.group("ticker").strip(),
+                rating=pending_match.group("rating").strip(),
+                decision=decision.strip(),
+                pending=True,
+            )
+        if resolved_match:
+            return _Entry(
+                date=resolved_match.group("date").strip(),
+                ticker=resolved_match.group("ticker").strip(),
+                rating=resolved_match.group("rating").strip(),
+                decision=decision.strip(),
+                pending=False,
+                raw=resolved_match.group("raw").strip(),
+                alpha=resolved_match.group("alpha").strip(),
+                holding=resolved_match.group("holding").strip(),
+                reflection=reflection.strip(),
+            )
+        return None
+
+    def load_entries(self) -> list[dict[str, Any]]:
+        raw_text = self._read_text()
+        if not raw_text.strip():
             return []
-
-        # Tokenize query
-        query_tokens = self._tokenize(current_situation)
-
-        # Get BM25 scores for all documents
-        scores = self.bm25.get_scores(query_tokens)
-
-        # Get top-n indices sorted by score (descending)
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:n_matches]
-
-        # Build results
-        results = []
-        query_token_set = set(query_tokens)
-
-        for idx in top_indices:
-            doc_token_set = set(self._tokenize(self.documents[idx]))
-            overlap_count = len(query_token_set & doc_token_set)
-            overlap_ratio = overlap_count / max(1, len(query_token_set))
-
-            if overlap_ratio < self.min_similarity:
+        parsed_entries = []
+        for chunk in raw_text.split(self._SEPARATOR):
+            parsed = self._parse_entry(chunk)
+            if parsed is None:
                 continue
-            results.append({
-                "matched_situation": self.documents[idx],
-                "recommendation": self.recommendations[idx],
-                "similarity_score": overlap_ratio,
-            })
+            parsed_entries.append(
+                {
+                    "date": parsed.date,
+                    "ticker": parsed.ticker,
+                    "rating": parsed.rating,
+                    "pending": parsed.pending,
+                    "raw": parsed.raw,
+                    "alpha": parsed.alpha,
+                    "holding": parsed.holding,
+                    "decision": parsed.decision,
+                    "reflection": parsed.reflection,
+                }
+            )
+        return parsed_entries
 
-        return results
+    def _load_entry_models(self) -> list[_Entry]:
+        return [
+            _Entry(**entry)
+            for entry in self.load_entries()
+        ]
 
-    def clear(self):
-        """Clear all stored memories."""
-        self.documents = []
-        self.recommendations = []
-        self.bm25 = None
+    def store_decision(self, ticker: str, trade_date: str, decision: str) -> None:
+        if self.log_path is None or not decision:
+            return
 
+        entries = self._load_entry_models()
+        if any(entry.ticker == ticker and entry.date == str(trade_date) for entry in entries):
+            return
 
-if __name__ == "__main__":
-    # Example usage
-    matcher = FinancialSituationMemory("test_memory")
+        entries.append(
+            _Entry(
+                date=str(trade_date),
+                ticker=ticker,
+                rating=_canonical_rating(decision),
+                decision=decision.strip(),
+            )
+        )
+        self._write_entries(entries)
 
-    # Example data
-    example_data = [
-        (
-            "High inflation rate with rising interest rates and declining consumer spending",
-            "Consider defensive sectors like consumer staples and utilities. Review fixed-income portfolio duration.",
-        ),
-        (
-            "Tech sector showing high volatility with increasing institutional selling pressure",
-            "Reduce exposure to high-growth tech stocks. Look for value opportunities in established tech companies with strong cash flows.",
-        ),
-        (
-            "Strong dollar affecting emerging markets with increasing forex volatility",
-            "Hedge currency exposure in international positions. Consider reducing allocation to emerging market debt.",
-        ),
-        (
-            "Market showing signs of sector rotation with rising yields",
-            "Rebalance portfolio to maintain target allocations. Consider increasing exposure to sectors benefiting from higher rates.",
-        ),
-    ]
+    def get_pending_entries(self) -> list[dict[str, Any]]:
+        return [entry for entry in self.load_entries() if entry["pending"]]
 
-    # Add the example situations and recommendations
-    matcher.add_situations(example_data)
+    def update_with_outcome(
+        self,
+        ticker: str,
+        trade_date: str,
+        raw_return: float,
+        alpha_return: float,
+        holding_days: int,
+        reflection: str,
+    ) -> None:
+        self.batch_update_with_outcomes(
+            [
+                {
+                    "ticker": ticker,
+                    "trade_date": trade_date,
+                    "raw_return": raw_return,
+                    "alpha_return": alpha_return,
+                    "holding_days": holding_days,
+                    "reflection": reflection,
+                }
+            ]
+        )
 
-    # Example query
-    current_situation = """
-    Market showing increased volatility in tech sector, with institutional investors
-    reducing positions and rising interest rates affecting growth stock valuations
-    """
+    def batch_update_with_outcomes(self, updates: list[dict[str, Any]]) -> None:
+        if self.log_path is None or not updates:
+            return
 
-    try:
-        recommendations = matcher.get_memories(current_situation, n_matches=2)
+        entries = self._load_entry_models()
+        update_map = {
+            (item["ticker"], str(item["trade_date"])): item
+            for item in updates
+        }
+        for entry in entries:
+            update = update_map.get((entry.ticker, entry.date))
+            if update is None or not entry.pending:
+                continue
+            entry.pending = False
+            entry.raw = _format_percent(update["raw_return"])
+            entry.alpha = _format_percent(update["alpha_return"])
+            entry.holding = f"{int(update['holding_days'])}d"
+            entry.reflection = str(update["reflection"]).strip()
 
-        for i, rec in enumerate(recommendations, 1):
-            print(f"\nMatch {i}:")
-            print(f"Similarity Score: {rec['similarity_score']:.2f}")
-            print(f"Matched Situation: {rec['matched_situation']}")
-            print(f"Recommendation: {rec['recommendation']}")
+        self._write_entries(self._rotate_entries(entries))
 
-    except Exception as e:
-        print(f"Error during recommendation: {str(e)}")
+    def _rotate_entries(self, entries: list[_Entry]) -> list[_Entry]:
+        if not self.max_entries:
+            return entries
+        resolved = [entry for entry in entries if not entry.pending]
+        pending = [entry for entry in entries if entry.pending]
+        if len(resolved) <= int(self.max_entries):
+            return entries
+        resolved = resolved[-int(self.max_entries) :]
+        return resolved + pending
+
+    def get_past_context(self, ticker: str, n_same: int = 3, n_cross: int = 2) -> str:
+        resolved = [entry for entry in self._load_entry_models() if not entry.pending]
+        if not resolved:
+            return ""
+
+        same_ticker = [entry for entry in resolved if entry.ticker == ticker][-n_same:]
+        cross_ticker = [entry for entry in resolved if entry.ticker != ticker][-n_cross:]
+        sections = []
+        if same_ticker:
+            sections.append(
+                f"Past analyses of {ticker}:\n" + "\n\n".join(self._context_block(entry) for entry in same_ticker)
+            )
+        if cross_ticker:
+            sections.append(
+                "Recent cross-ticker lessons:\n" + "\n\n".join(self._context_block(entry) for entry in cross_ticker)
+            )
+        return "\n\n".join(section.strip() for section in sections if section).strip()
+
+    def _context_block(self, entry: _Entry) -> str:
+        return (
+            f"[{entry.date} | {entry.ticker} | {entry.rating} | {entry.raw} | {entry.alpha} | {entry.holding}]\n"
+            f"DECISION:\n{entry.decision.strip()}\n\n"
+            f"REFLECTION:\n{entry.reflection.strip()}"
+        ).strip()

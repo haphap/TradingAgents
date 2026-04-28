@@ -250,7 +250,7 @@ class FundamentalsAnalystTests(unittest.TestCase):
         ):
             result = node(state)
 
-        self.assertIn("一、核心概览与估值快照", result["fundamentals_report"])
+        self.assertIn("1. 核心概览与估值快照", result["fundamentals_report"])
         self.assertNotIn("Fundamentals Overview and Valuation Snapshot", result["fundamentals_report"])
         self.assertNotIn("根据最新工具输出数据", result["fundamentals_report"])
         rewrite_prompt = llm.prompts[0]

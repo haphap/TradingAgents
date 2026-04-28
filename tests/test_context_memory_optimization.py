@@ -9,11 +9,11 @@ from tradingagents.agents.utils.agent_utils import (
     extract_feedback_snapshot,
     get_snapshot_template,
     make_display_snapshot,
+    normalize_display_numbering,
     strip_analyst_decision_summary,
     strip_feedback_snapshot,
     truncate_for_prompt,
 )
-from tradingagents.agents.utils.memory import FinancialSituationMemory
 
 
 class ContextMemoryOptimizationTests(unittest.TestCase):
@@ -34,30 +34,13 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("Content trimmed", truncated)
         self.assertTrue(truncated.endswith("qrstuvwxyz"))
 
-    def test_memory_similarity_threshold_filters_irrelevant_matches(self):
-        situations = [
-            ("apple earnings beat with margin expansion", "prefer bullish setups"),
-            ("oil demand collapse and weak refinery margins", "reduce cyclical exposure"),
-        ]
-        strict_memory = FinancialSituationMemory(
-            "strict_memory",
-            config={"memory_min_similarity": 0.99},
-        )
-        strict_memory.add_situations(situations)
+    def test_normalize_display_numbering_prefers_arabic_digits(self):
+        text = "一、核心观点\n② 跟踪订单\n③ 跟踪利润率"
+        normalized = normalize_display_numbering(text)
 
-        unrelated = strict_memory.get_memories("football world cup final highlights", n_matches=2)
-        self.assertEqual(unrelated, [])
-
-        related = strict_memory.get_memories("apple margin expansion after earnings", n_matches=2)
-        self.assertEqual(related, [])
-
-        relaxed_memory = FinancialSituationMemory(
-            "relaxed_memory",
-            config={"memory_min_similarity": 0.0},
-        )
-        relaxed_memory.add_situations(situations)
-        related = relaxed_memory.get_memories("apple margin expansion after earnings", n_matches=2)
-        self.assertGreaterEqual(len(related), 1)
+        self.assertIn("1. 核心观点", normalized)
+        self.assertIn("2. 跟踪订单", normalized)
+        self.assertIn("3. 跟踪利润率", normalized)
 
     def test_feedback_snapshot_helpers(self):
         response = (

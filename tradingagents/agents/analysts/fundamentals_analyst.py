@@ -13,6 +13,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_income_statement,
     get_language_instruction,
     get_output_language,
+    normalize_display_numbering,
     normalize_chinese_role_terms,
     truncate_for_prompt,
 )
@@ -131,7 +132,7 @@ def _normalize_fundamentals_report_text(report: str) -> str:
 
     normalized = re.sub(r"[ \t]+\n", "\n", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
-    return normalized.strip()
+    return normalize_display_numbering(normalized).strip()
 
 
 def _rewrite_expectations() -> str:

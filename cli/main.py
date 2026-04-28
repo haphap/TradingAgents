@@ -1,3 +1,4 @@
+import copy
 from typing import Optional
 import datetime
 import typer
@@ -670,7 +671,7 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
 def get_user_selections():
     """Get all user selections before starting the analysis display."""
     # Display ASCII art welcome message
-    with open(Path(__file__).parent / "static" / "welcome.txt", "r") as f:
+    with open(Path(__file__).parent / "static" / "welcome.txt", "r", encoding="utf-8") as f:
         welcome_ascii = f.read()
 
     # Create welcome box content
@@ -853,19 +854,19 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
     analyst_parts = []
     if final_state.get("market_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "market.md").write_text(final_state["market_report"])
+        (analysts_dir / "market.md").write_text(final_state["market_report"], encoding="utf-8")
         analyst_parts.append((_localize_cli_role_title("Market Analyst"), final_state["market_report"]))
     if final_state.get("sentiment_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"])
+        (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"], encoding="utf-8")
         analyst_parts.append((_localize_cli_role_title("Social Analyst"), final_state["sentiment_report"]))
     if final_state.get("news_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "news.md").write_text(final_state["news_report"])
+        (analysts_dir / "news.md").write_text(final_state["news_report"], encoding="utf-8")
         analyst_parts.append((_localize_cli_role_title("News Analyst"), final_state["news_report"]))
     if final_state.get("fundamentals_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "fundamentals.md").write_text(final_state["fundamentals_report"])
+        (analysts_dir / "fundamentals.md").write_text(final_state["fundamentals_report"], encoding="utf-8")
         analyst_parts.append((_localize_cli_role_title("Fundamentals Analyst"), final_state["fundamentals_report"]))
     if analyst_parts:
         content = "\n\n".join(f"### {name}\n{text}" for name, text in analyst_parts)
@@ -880,11 +881,11 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         research_parts = []
         if debate.get("bull_history"):
             research_dir.mkdir(exist_ok=True)
-            (research_dir / "bull.md").write_text(debate["bull_history"])
+            (research_dir / "bull.md").write_text(debate["bull_history"], encoding="utf-8")
             research_parts.append((_localize_cli_role_title("Bull Researcher"), debate["bull_history"]))
         if debate.get("bear_history"):
             research_dir.mkdir(exist_ok=True)
-            (research_dir / "bear.md").write_text(debate["bear_history"])
+            (research_dir / "bear.md").write_text(debate["bear_history"], encoding="utf-8")
             research_parts.append((_localize_cli_role_title("Bear Researcher"), debate["bear_history"]))
         if debate.get("judge_decision"):
             research_dir.mkdir(exist_ok=True)
@@ -893,12 +894,13 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
                     debate["judge_decision"],
                     debate.get("judge_snapshot_path", ""),
                     show_snapshot_summary=True,
-                )
+                ),
+                encoding="utf-8",
             )
         formatted_research = format_research_team_history(debate)
         if formatted_research:
             research_dir.mkdir(exist_ok=True)
-            (research_dir / "rounds.md").write_text(formatted_research)
+            (research_dir / "rounds.md").write_text(formatted_research, encoding="utf-8")
         if research_parts:
             content = formatted_research or "\n\n".join(
                 f"### {name}\n{text}" for name, text in research_parts
@@ -911,7 +913,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
     if final_state.get("trader_investment_plan"):
         trading_dir = save_path / "3_trading"
         trading_dir.mkdir(exist_ok=True)
-        (trading_dir / "trader.md").write_text(final_state["trader_investment_plan"])
+        (trading_dir / "trader.md").write_text(final_state["trader_investment_plan"], encoding="utf-8")
         sections.append(
             f"## {_localize_cli_label('III. Trading Team Plan', 'III. 交易团队计划')}\n\n"
             f"### {_localize_cli_role_title('Trader')}\n{final_state['trader_investment_plan']}"
@@ -924,20 +926,20 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         risk_parts = []
         if risk.get("aggressive_history"):
             risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "aggressive.md").write_text(risk["aggressive_history"])
+            (risk_dir / "aggressive.md").write_text(risk["aggressive_history"], encoding="utf-8")
             risk_parts.append((_localize_cli_role_title("Aggressive Analyst"), risk["aggressive_history"]))
         if risk.get("conservative_history"):
             risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "conservative.md").write_text(risk["conservative_history"])
+            (risk_dir / "conservative.md").write_text(risk["conservative_history"], encoding="utf-8")
             risk_parts.append((_localize_cli_role_title("Conservative Analyst"), risk["conservative_history"]))
         if risk.get("neutral_history"):
             risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "neutral.md").write_text(risk["neutral_history"])
+            (risk_dir / "neutral.md").write_text(risk["neutral_history"], encoding="utf-8")
             risk_parts.append((_localize_cli_role_title("Neutral Analyst"), risk["neutral_history"]))
         formatted_risk = format_risk_management_history(risk, include_manager=False)
         if formatted_risk:
             risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "rounds.md").write_text(formatted_risk)
+            (risk_dir / "rounds.md").write_text(formatted_risk, encoding="utf-8")
         if risk_parts:
             content = formatted_risk or "\n\n".join(
                 f"### {name}\n{text}" for name, text in risk_parts
@@ -955,7 +957,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
                 risk.get("judge_snapshot_path", ""),
                 show_snapshot_summary=False,
             )
-            (portfolio_dir / "decision.md").write_text(formatted_portfolio)
+            (portfolio_dir / "decision.md").write_text(formatted_portfolio, encoding="utf-8")
             sections.append(
                 f"## {_localize_cli_label('V. Portfolio Manager Decision', 'V. 投资组合经理决策')}\n\n"
                 f"### {_localize_cli_role_title('Portfolio Manager')}\n{formatted_portfolio}"
@@ -966,7 +968,10 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         f"# {_localize_cli_label('Trading Analysis Report', '交易分析报告')}: {ticker}\n\n"
         f"{_localize_cli_label('Generated', '生成时间')}: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
     )
-    (save_path / "complete_report.md").write_text(header + "\n\n".join(sections))
+    (save_path / "complete_report.md").write_text(
+        header + "\n\n".join(sections),
+        encoding="utf-8",
+    )
     return save_path / "complete_report.md"
 
 
@@ -1238,12 +1243,12 @@ def process_chunk_messages(chunk, buffer: MessageBuffer) -> None:
                 else:
                     buffer.add_tool_call(tool_call.name, tool_call.args)
 
-def run_analysis():
+def run_analysis(checkpoint: bool = False):
     # First get all user selections
     selections = get_user_selections()
 
     # Create config with selected research depth
-    config = DEFAULT_CONFIG.copy()
+    config = copy.deepcopy(DEFAULT_CONFIG)
     config["max_debate_rounds"] = selections["research_depth"]
     config["max_risk_discuss_rounds"] = selections["research_depth"]
     config["quick_think_llm"] = selections["shallow_thinker"]
@@ -1255,6 +1260,7 @@ def run_analysis():
     config["openai_reasoning_effort"] = selections.get("openai_reasoning_effort")
     config["anthropic_effort"] = selections.get("anthropic_effort")
     config["output_language"] = selections.get("output_language", "English")
+    config["checkpoint_enabled"] = checkpoint
 
     # Create stats callback handler for tracking LLM/tool calls
     stats_handler = StatsCallbackHandler()
@@ -1292,7 +1298,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, message_type, content = obj.messages[-1]
             content = content.replace("\n", " ")  # Replace newlines with spaces
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [{message_type}] {content}\n")
         return wrapper
     
@@ -1303,7 +1309,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, tool_name, args = obj.tool_calls[-1]
             args_str = ", ".join(f"{k}={v}" for k, v in args.items())
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
         return wrapper
 
@@ -1317,7 +1323,7 @@ def run_analysis():
                 if content:
                     file_name = f"{section_name}.md"
                     text = "\n".join(str(item) for item in content) if isinstance(content, list) else content
-                    with open(report_dir / file_name, "w") as f:
+                    with open(report_dir / file_name, "w", encoding="utf-8") as f:
                         f.write(text)
         return wrapper
 
@@ -1354,96 +1360,106 @@ def run_analysis():
         )
         update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
-        # Initialize state and get graph args with callbacks
-        init_agent_state = graph.propagator.create_initial_state(
-            selections["ticker"], selections["analysis_date"]
-        )
-        # Pass callbacks to graph config for tool execution tracking
-        # (LLM tracking is handled separately via LLM constructor)
-        args = graph.propagator.get_graph_args(callbacks=[stats_handler])
-
-        # Stream the analysis
         trace = []
-        for chunk in graph.graph.stream(init_agent_state, **args):
-            # Process all messages in each chunk so intermediate tool calls are not dropped.
-            process_chunk_messages(chunk, message_buffer)
-
-            # Update analyst statuses based on report state (runs on every chunk)
-            update_analyst_statuses(message_buffer, chunk)
-
-            # Research Team - Handle Investment Debate State
-            if chunk.get("investment_debate_state"):
-                debate_state = chunk["investment_debate_state"]
-                bull_hist = debate_state.get("bull_history", "").strip()
-                bear_hist = debate_state.get("bear_history", "").strip()
-                judge = debate_state.get("judge_decision", "").strip()
-                formatted_research = format_research_team_history(debate_state)
-
-                # Only update status when there's actual content
-                if bull_hist or bear_hist:
-                    update_research_team_status("in_progress")
-                if formatted_research:
-                    message_buffer.update_report_section(
-                        "investment_plan", formatted_research
-                    )
-                if judge:
-                    update_research_team_status("completed")
-                    message_buffer.update_agent_status("Trader", "in_progress")
-
-            # Trading Team
-            if chunk.get("trader_investment_plan"):
-                message_buffer.update_report_section(
-                    "trader_investment_plan", chunk["trader_investment_plan"]
-                )
-                if message_buffer.agent_status.get("Trader") != "completed":
-                    message_buffer.update_agent_status("Trader", "completed")
-                    message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-
-            # Risk Management Team - Handle Risk Debate State
-            if chunk.get("risk_debate_state"):
-                risk_state = chunk["risk_debate_state"]
-                agg_hist = risk_state.get("aggressive_history", "").strip()
-                con_hist = risk_state.get("conservative_history", "").strip()
-                neu_hist = risk_state.get("neutral_history", "").strip()
-                judge = risk_state.get("judge_decision", "").strip()
-                formatted_risk = format_risk_management_history(
-                    risk_state, include_manager=False
-                )
-                formatted_portfolio = (
-                    _format_manager_decision(
-                        judge,
-                        risk_state.get("judge_snapshot_path", ""),
-                        show_snapshot_summary=False,
-                    )
-                    if judge
-                    else ""
-                )
-
-                if agg_hist:
-                    if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
-                        message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-                if con_hist:
-                    if message_buffer.agent_status.get("Conservative Analyst") != "completed":
-                        message_buffer.update_agent_status("Conservative Analyst", "in_progress")
-                if neu_hist:
-                    if message_buffer.agent_status.get("Neutral Analyst") != "completed":
-                        message_buffer.update_agent_status("Neutral Analyst", "in_progress")
-                if formatted_portfolio:
-                    message_buffer.update_report_section(
-                        "final_trade_decision", formatted_portfolio
-                    )
-                if judge:
-                    if message_buffer.agent_status.get("Portfolio Manager") != "completed":
-                        message_buffer.update_agent_status("Portfolio Manager", "in_progress")
-                        message_buffer.update_agent_status("Aggressive Analyst", "completed")
-                        message_buffer.update_agent_status("Conservative Analyst", "completed")
-                        message_buffer.update_agent_status("Neutral Analyst", "completed")
-                        message_buffer.update_agent_status("Portfolio Manager", "completed")
-
-            # Update the display
+        init_agent_state, args, resumed = graph.prepare_run(
+            selections["ticker"],
+            selections["analysis_date"],
+            callbacks=[stats_handler],
+        )
+        if resumed:
+            message_buffer.add_message(
+                "System",
+                f"Resuming checkpoint for {selections['ticker']} on {selections['analysis_date']}",
+            )
             update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-            trace.append(chunk)
+        completed_successfully = False
+        try:
+            for chunk in graph.graph.stream(init_agent_state, **args):
+                # Process all messages in each chunk so intermediate tool calls are not dropped.
+                process_chunk_messages(chunk, message_buffer)
+
+                # Update analyst statuses based on report state (runs on every chunk)
+                update_analyst_statuses(message_buffer, chunk)
+
+                # Research Team - Handle Investment Debate State
+                if chunk.get("investment_debate_state"):
+                    debate_state = chunk["investment_debate_state"]
+                    bull_hist = debate_state.get("bull_history", "").strip()
+                    bear_hist = debate_state.get("bear_history", "").strip()
+                    judge = debate_state.get("judge_decision", "").strip()
+                    formatted_research = format_research_team_history(debate_state)
+
+                    # Only update status when there's actual content
+                    if bull_hist or bear_hist:
+                        update_research_team_status("in_progress")
+                    if formatted_research:
+                        message_buffer.update_report_section(
+                            "investment_plan", formatted_research
+                        )
+                    if judge:
+                        update_research_team_status("completed")
+                        message_buffer.update_agent_status("Trader", "in_progress")
+
+                # Trading Team
+                if chunk.get("trader_investment_plan"):
+                    message_buffer.update_report_section(
+                        "trader_investment_plan", chunk["trader_investment_plan"]
+                    )
+                    if message_buffer.agent_status.get("Trader") != "completed":
+                        message_buffer.update_agent_status("Trader", "completed")
+                        message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
+
+                # Risk Management Team - Handle Risk Debate State
+                if chunk.get("risk_debate_state"):
+                    risk_state = chunk["risk_debate_state"]
+                    agg_hist = risk_state.get("aggressive_history", "").strip()
+                    con_hist = risk_state.get("conservative_history", "").strip()
+                    neu_hist = risk_state.get("neutral_history", "").strip()
+                    judge = risk_state.get("judge_decision", "").strip()
+                    formatted_risk = format_risk_management_history(
+                        risk_state, include_manager=False
+                    )
+                    formatted_portfolio = (
+                        _format_manager_decision(
+                            judge,
+                            risk_state.get("judge_snapshot_path", ""),
+                            show_snapshot_summary=False,
+                        )
+                        if judge
+                        else ""
+                    )
+
+                    if agg_hist:
+                        if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
+                            message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
+                    if con_hist:
+                        if message_buffer.agent_status.get("Conservative Analyst") != "completed":
+                            message_buffer.update_agent_status("Conservative Analyst", "in_progress")
+                    if neu_hist:
+                        if message_buffer.agent_status.get("Neutral Analyst") != "completed":
+                            message_buffer.update_agent_status("Neutral Analyst", "in_progress")
+                    if formatted_portfolio:
+                        message_buffer.update_report_section(
+                            "final_trade_decision", formatted_portfolio
+                        )
+                    if judge:
+                        if message_buffer.agent_status.get("Portfolio Manager") != "completed":
+                            message_buffer.update_agent_status("Portfolio Manager", "in_progress")
+                            message_buffer.update_agent_status("Aggressive Analyst", "completed")
+                            message_buffer.update_agent_status("Conservative Analyst", "completed")
+                            message_buffer.update_agent_status("Neutral Analyst", "completed")
+                            message_buffer.update_agent_status("Portfolio Manager", "completed")
+
+                # Update the display
+                update_display(layout, stats_handler=stats_handler, start_time=start_time)
+
+                trace.append(chunk)
+            completed_successfully = True
+        finally:
+            if completed_successfully and trace:
+                graph.finalize_run(selections["analysis_date"], trace[-1])
+            graph.close_run()
 
         # Get final state and decision
         final_state = trace[-1]
@@ -1517,8 +1533,24 @@ def run_analysis():
 
 
 @app.command()
-def analyze():
-    run_analysis()
+def analyze(
+    checkpoint: bool = typer.Option(
+        False,
+        "--checkpoint",
+        help="Enable checkpoint/resume so interrupted runs can continue from the last completed node.",
+    ),
+    clear_checkpoints: bool = typer.Option(
+        False,
+        "--clear-checkpoints",
+        help="Delete all saved checkpoints before running.",
+    ),
+):
+    if clear_checkpoints:
+        from tradingagents.graph.checkpointer import clear_all_checkpoints
+
+        deleted = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
+        console.print(f"[yellow]Cleared {deleted} checkpoint(s).[/yellow]")
+    run_analysis(checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

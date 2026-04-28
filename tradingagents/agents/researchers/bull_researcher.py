@@ -21,7 +21,7 @@ from tradingagents.agents.utils.agent_utils import (
 )
 
 
-def create_bull_researcher(llm, memory):
+def create_bull_researcher(llm, memory=None):
     def bull_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         bull_history = investment_debate_state.get("bull_history", "")
@@ -35,13 +35,6 @@ def create_bull_researcher(llm, memory):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
 
         prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 
@@ -63,9 +56,8 @@ Latest bear feedback snapshot: {bear_snapshot}
 Your complete debate history: {bull_history}
 Bear's complete debate history: {bear_history}
 Last bear argument body: {current_response}
-Internal lessons from similar situations (use internally only; do not quote, reveal, translate, or restate them in the visible answer): {past_memory_str}
-Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position. You must learn from these lessons without mentioning them explicitly in the answer.
 When writing in Chinese, use the exact role names "{localize_role_name('Bull Analyst')}" and "{localize_role_name('Bear Analyst')}". Do not use variants like "牛派分析师" or "熊派分析师".
+Use Arabic numerals such as 1. 2. 3. for any numbered items.
 Your main argument body must be written entirely in Chinese. {get_bull_proposal_instruction()}
 {get_analyst_decision_instruction()}
 Use this exact decision-summary template:

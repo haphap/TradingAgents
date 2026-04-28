@@ -1,9 +1,7 @@
+from importlib import import_module
 from typing import Optional
 
 from .base_client import BaseLLMClient
-from .openai_client import OpenAIClient
-from .anthropic_client import AnthropicClient
-from .google_client import GoogleClient
 
 
 def create_llm_client(
@@ -35,15 +33,23 @@ def create_llm_client(
     provider_lower = provider.lower()
 
     if provider_lower in ("openai", "ollama", "openrouter"):
+        openai_module = import_module("tradingagents.llm_clients.openai_client")
+        OpenAIClient = openai_module.OpenAIClient
         return OpenAIClient(model, base_url, provider=provider_lower, **kwargs)
 
     if provider_lower == "xai":
+        openai_module = import_module("tradingagents.llm_clients.openai_client")
+        OpenAIClient = openai_module.OpenAIClient
         return OpenAIClient(model, base_url, provider="xai", **kwargs)
 
     if provider_lower == "anthropic":
+        anthropic_module = import_module("tradingagents.llm_clients.anthropic_client")
+        AnthropicClient = anthropic_module.AnthropicClient
         return AnthropicClient(model, base_url, **kwargs)
 
     if provider_lower == "google":
+        google_module = import_module("tradingagents.llm_clients.google_client")
+        GoogleClient = google_module.GoogleClient
         return GoogleClient(model, base_url, **kwargs)
 
     raise ValueError(f"Unsupported LLM provider: {provider}")

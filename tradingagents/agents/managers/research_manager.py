@@ -6,6 +6,7 @@ from tradingagents.agents.utils.agent_utils import (
     make_display_snapshot,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    get_output_language,
     load_snapshot_file,
     localize_label,
     localize_rating_term,
@@ -15,10 +16,21 @@ from tradingagents.agents.utils.agent_utils import (
     strip_feedback_snapshot,
     synthesize_side_report,
 )
-from tradingagents.content_utils import extract_text_content
+from tradingagents.agents.schemas import ResearchPlan, render_research_plan
+from tradingagents.agents.utils.structured import invoke_structured_or_freetext
 
 
-def create_research_manager(llm, memory):
+def _is_chinese_output() -> bool:
+    return get_output_language().strip().lower() in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
+
+
+def _research_action_logic_instruction() -> str:
+    if _is_chinese_output():
+        return "- 说明估值、催化节奏、下行边界，以及确认 / 证伪信号如何共同导向你的结论。"
+    return "- Explain how valuation, catalyst timing, downside boundary, and confirmation / invalidation signals lead to your decision."
+
+
+def create_research_manager(llm, memory=None):
     def research_manager_node(state) -> dict:
         instrument_context = build_instrument_context(state["company_of_interest"])
         market_research_report = state["market_report"]
@@ -41,16 +53,10 @@ def create_research_manager(llm, memory):
         bull_report = synthesize_side_report(llm, "Bull Analyst", bull_history, bull_snapshot_full)
         bear_report = synthesize_side_report(llm, "Bear Analyst", bear_history, bear_snapshot_full)
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
-
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate the full multi-round debate and make a definitive decision: align with the {localize_role_name("Bear Analyst")}, the {localize_role_name("Bull Analyst")}, or choose {localize_rating_term("Hold")} only if it is strongly justified based on the arguments presented.
 
 Your response must evaluate both sides before giving a position. Do not jump straight to the holding suggestion.
+Use Arabic numerals such as 1. 2. 3. for any numbered items.
 
 Use this exact output order with Markdown headings:
 ## {localize_label("Debate Conclusion", "辩论结论")}
@@ -61,21 +67,18 @@ Use this exact output order with Markdown headings:
 
 ## {localize_label("Action Logic", "行为逻辑")}
 - Write your own decision logic from evidence to action, not just a repetition of either side.
-- Explain how valuation, catalyst timing, downside boundary, and confirmation / invalidation signals lead to your decision.
+{_research_action_logic_instruction()}
 - This section must make clear what would cause you to maintain, add, reduce, or reverse the position.
 
 ## {localize_label("Positioning Recommendation", "持仓建议")}
-- Give a clear, actionable recommendation—{localize_rating_term("Buy")}, {localize_rating_term("Sell")}, or {localize_rating_term("Hold")}—grounded in the debate's strongest arguments.
+- Give a clear, actionable recommendation—{localize_rating_term("Buy")}, {localize_rating_term("Overweight")}, {localize_rating_term("Hold")}, {localize_rating_term("Underweight")}, or {localize_rating_term("Sell")}—grounded in the debate's strongest arguments.
 - Include concrete execution guidance for the trader: entry / add / reduce conditions, risk controls, and what to monitor next.
 
-Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving.
 Only after the three sections above, append a feedback block in this exact format. Do not place the feedback snapshot before the conclusion:
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}
 
-Here are your past reflections on mistakes:
-\"{past_memory_str}\"
-
+{get_language_instruction()}
 {instrument_context}
 
 {localize_label("Rolling debate brief:", "滚动辩论摘要:")}
@@ -85,12 +88,15 @@ Here are your past reflections on mistakes:
 {bull_report}
 
 {localize_label("Bear Analyst comprehensive position report (synthesized from all rounds):", f"{localize_role_name('Bear Analyst')} 综合立场报告（基于全轮次辩论）:")}
-{bear_report}{get_language_instruction()}
+{bear_report}
 """
-        response = llm.invoke(prompt)
-        normalized_content = normalize_chinese_manager_terms(
-            extract_text_content(response.content)
-        )
+        response = invoke_structured_or_freetext(llm, prompt, ResearchPlan)
+        if isinstance(response, ResearchPlan):
+            normalized_content = normalize_chinese_manager_terms(
+                render_research_plan(response)
+            )
+        else:
+            normalized_content = normalize_chinese_manager_terms(response)
         judge_snapshot_full = extract_feedback_snapshot(normalized_content)
         debate_round = max(1, investment_debate_state.get("count", 0) // 2)
         judge_snapshot_path = save_snapshot_file(

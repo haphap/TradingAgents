@@ -7,17 +7,31 @@ from tradingagents.agents.utils.agent_utils import (
     get_localized_rating_scale,
     get_snapshot_template,
     get_snapshot_writing_instruction,
+    get_output_language,
     load_snapshot_file,
     localize_label,
     localize_rating_term,
     localize_role_name,
+    make_display_snapshot,
     normalize_chinese_manager_terms,
+    save_snapshot_file,
     synthesize_side_report,
 )
-from tradingagents.content_utils import extract_text_content
+from tradingagents.agents.schemas import PortfolioDecision, render_portfolio_decision
+from tradingagents.agents.utils.structured import invoke_structured_or_freetext
 
 
-def create_portfolio_manager(llm, memory):
+def _is_chinese_output() -> bool:
+    return get_output_language().strip().lower() in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
+
+
+def _portfolio_action_logic_instruction() -> str:
+    if _is_chinese_output():
+        return "- 说明估值、催化节奏、下行边界、仓位大小以及加仓 / 减仓 / 对冲触发条件如何共同导向你的决策。"
+    return "- Explain how valuation, catalyst timing, downside boundary, position sizing, and add / reduce / hedge triggers lead to your decision."
+
+
+def create_portfolio_manager(llm, memory=None):
     def portfolio_manager_node(state) -> dict:
 
         instrument_context = build_instrument_context(state["company_of_interest"])
@@ -42,17 +56,20 @@ def create_portfolio_manager(llm, memory):
         aggressive_report = synthesize_side_report(llm, "Aggressive Analyst", risk_debate_state.get("aggressive_history", ""), aggressive_snapshot_full)
         conservative_report = synthesize_side_report(llm, "Conservative Analyst", risk_debate_state.get("conservative_history", ""), conservative_snapshot_full)
         neutral_report = synthesize_side_report(llm, "Neutral Analyst", risk_debate_state.get("neutral_history", ""), neutral_snapshot_full)
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
+        past_context = state.get("past_context", "").strip()
+        lessons_block = ""
+        if past_context:
+            lessons_header = (
+                "历史决策复盘（仅供内部吸收，不要照抄到可见答案中）"
+                if _is_chinese_output()
+                else "Lessons from resolved past decisions (internal only; do not quote verbatim)"
+            )
+            lessons_block = f"**{lessons_header}:**\n{past_context}\n\n"
 
         prompt = f"""As the Portfolio Manager, synthesize the full risk debate and deliver the final trading decision.
 
 Your response must evaluate all three risk perspectives before giving a position. Do not jump straight to the final recommendation.
+Use Arabic numerals such as 1. 2. 3. for any numbered items.
 
 Use this exact output order with Markdown headings:
 ## {localize_label("Debate Conclusion", "辩论结论")}
@@ -62,7 +79,7 @@ Use this exact output order with Markdown headings:
 
 ## {localize_label("Action Logic", "行为逻辑")}
 - Write your own decision logic from evidence to execution, not just a paraphrase of one analyst.
-- Explain how valuation, catalyst timing, downside boundary, position sizing, and add / reduce / hedge triggers lead to your decision.
+{_portfolio_action_logic_instruction()}
 - Make clear what would cause you to maintain, add, reduce, hedge, or reverse the position.
 
 ## {localize_label("Positioning Recommendation", "持仓建议")}
@@ -79,7 +96,7 @@ Use this exact output order with Markdown headings:
 **Context:**
 - Research Manager's investment plan: **{research_plan}**
 - Trader's transaction proposal: **{trader_plan}**
-- Lessons from past decisions: **{past_memory_str}**
+{lessons_block.strip()}
 
 **{localize_label("Rolling Risk Debate Brief", "滚动风险辩论摘要")}:**
 {debate_brief}
@@ -98,11 +115,23 @@ Only after the three sections above and the final transaction proposal line, app
 {get_snapshot_template()}
 {get_snapshot_writing_instruction()}{get_language_instruction()}"""
 
-        response = llm.invoke(prompt)
-        normalized_content = normalize_chinese_manager_terms(
-            extract_text_content(response.content)
+        response = invoke_structured_or_freetext(llm, prompt, PortfolioDecision)
+        if isinstance(response, PortfolioDecision):
+            normalized_content = normalize_chinese_manager_terms(
+                render_portfolio_decision(response)
+            )
+        else:
+            normalized_content = normalize_chinese_manager_terms(response)
+        judge_snapshot_full = extract_feedback_snapshot(normalized_content)
+        debate_round = max(1, (risk_debate_state.get("count", 0) + 2) // 3)
+        judge_snapshot_path = save_snapshot_file(
+            judge_snapshot_full,
+            "Portfolio Manager",
+            state.get("company_of_interest", "unknown"),
+            state.get("trade_date", "unknown"),
+            debate_round,
         )
-        judge_snapshot = extract_feedback_snapshot(normalized_content)
+        judge_snapshot = make_display_snapshot(judge_snapshot_full, judge_snapshot_path)
         updated_brief = build_debate_brief(
             {
                 "Aggressive Analyst": aggressive_snapshot_display,
@@ -120,7 +149,7 @@ Only after the three sections above and the final transaction proposal line, app
             "conservative_history": risk_debate_state.get("conservative_history", ""),
             "neutral_history": risk_debate_state.get("neutral_history", ""),
             "debate_brief": updated_brief,
-            "latest_speaker": "Judge",
+            "latest_speaker": "Portfolio Manager",
             "current_aggressive_response": risk_debate_state.get("current_aggressive_response", ""),
             "current_conservative_response": risk_debate_state.get("current_conservative_response", ""),
             "current_neutral_response": risk_debate_state.get("current_neutral_response", ""),
@@ -130,6 +159,8 @@ Only after the three sections above and the final transaction proposal line, app
             "aggressive_snapshot_path": risk_debate_state.get("aggressive_snapshot_path", ""),
             "conservative_snapshot_path": risk_debate_state.get("conservative_snapshot_path", ""),
             "neutral_snapshot_path": risk_debate_state.get("neutral_snapshot_path", ""),
+            "judge_snapshot": judge_snapshot,
+            "judge_snapshot_path": judge_snapshot_path,
             "count": risk_debate_state["count"],
         }
 

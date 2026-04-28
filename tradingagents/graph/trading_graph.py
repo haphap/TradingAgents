@@ -3,8 +3,10 @@
 import os
 from pathlib import Path
 import json
-from datetime import date
-from typing import Dict, Any, Tuple, List, Optional
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+
+import yfinance as yf
 
 from langgraph.prebuilt import ToolNode
 
@@ -12,11 +14,9 @@ from tradingagents.llm_clients import create_llm_client
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.agents.utils.memory import FinancialSituationMemory
+from tradingagents.agents.utils.memory import TradingMemoryLog
 from tradingagents.agents.utils.agent_states import (
     AgentState,
-    InvestDebateState,
-    RiskDebateState,
 )
 from tradingagents.dataflows.config import set_config
 
@@ -33,6 +33,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_global_news
 )
 
+from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
 from .propagation import Propagator
@@ -66,10 +67,8 @@ class TradingAgentsGraph:
         set_config(self.config)
 
         # Create necessary directories
-        os.makedirs(
-            os.path.join(self.config["project_dir"], "dataflows/data_cache"),
-            exist_ok=True,
-        )
+        os.makedirs(self.config["data_cache_dir"], exist_ok=True)
+        os.makedirs(self.config["results_dir"], exist_ok=True)
 
         # Initialize LLMs with provider-specific thinking configuration
         llm_kwargs = self._get_provider_kwargs()
@@ -93,13 +92,8 @@ class TradingAgentsGraph:
 
         self.deep_thinking_llm = deep_client.get_llm()
         self.quick_thinking_llm = quick_client.get_llm()
-        
-        # Initialize memories
-        self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
-        self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
-        self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
-        self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
-        self.portfolio_manager_memory = FinancialSituationMemory("portfolio_manager_memory", self.config)
+
+        self.memory_log = TradingMemoryLog(self.config)
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
@@ -113,11 +107,11 @@ class TradingAgentsGraph:
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.tool_nodes,
-            self.bull_memory,
-            self.bear_memory,
-            self.trader_memory,
-            self.invest_judge_memory,
-            self.portfolio_manager_memory,
+            None,
+            None,
+            None,
+            None,
+            None,
             self.conditional_logic,
         )
 
@@ -133,7 +127,9 @@ class TradingAgentsGraph:
         self.log_states_dict = {}  # date to full state dict
 
         # Set up the graph
-        self.graph = self.graph_setup.setup_graph(selected_analysts)
+        self.workflow = self.graph_setup.setup_graph(selected_analysts)
+        self.graph = self.workflow.compile()
+        self._checkpointer_ctx = None
 
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
@@ -195,38 +191,87 @@ class TradingAgentsGraph:
 
     def propagate(self, company_name, trade_date):
         """Run the trading agents graph for a company on a specific date."""
+        init_agent_state, args, _ = self.prepare_run(company_name, trade_date)
 
-        self.ticker = company_name
-
-        # Initialize state
-        init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date
-        )
-        args = self.propagator.get_graph_args()
-
-        if self.debug:
-            # Debug mode with tracing
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    chunk["messages"][-1].pretty_print()
+        try:
+            if self.debug:
+                trace = []
+                for chunk in self.graph.stream(init_agent_state, **args):
+                    if chunk["messages"]:
+                        chunk["messages"][-1].pretty_print()
                     trace.append(chunk)
 
-            final_state = trace[-1]
-        else:
-            # Standard mode without tracing
-            final_state = self.graph.invoke(init_agent_state, **args)
+                final_state = trace[-1]
+            else:
+                final_state = self.graph.invoke(init_agent_state, **args)
 
-        # Store current state for reflection
+            self.finalize_run(trade_date, final_state)
+            return final_state, self.process_signal(final_state["final_trade_decision"])
+        finally:
+            self.close_run()
+
+    def prepare_run(
+        self,
+        company_name: str,
+        trade_date: str,
+        callbacks: Optional[List] = None,
+    ) -> tuple[Dict[str, Any] | None, Dict[str, Any], bool]:
+        """Prepare graph execution and return (input_state, graph_args, resumed)."""
+        self.close_run()
+        self.ticker = company_name
+        trade_date_str = str(trade_date)
+        resumed = False
+        self._resolve_pending_entries(company_name)
+
+        if self.config.get("checkpoint_enabled"):
+            self._checkpointer_ctx = get_checkpointer(
+                self.config["data_cache_dir"], company_name
+            )
+            saver = self._checkpointer_ctx.__enter__()
+            self.graph = self.workflow.compile(checkpointer=saver)
+            resumed = checkpoint_step(
+                self.config["data_cache_dir"], company_name, trade_date_str
+            ) is not None
+
+        init_agent_state = None
+        if not resumed:
+            init_agent_state = self.propagator.create_initial_state(
+                company_name,
+                trade_date,
+                past_context=self.memory_log.get_past_context(company_name),
+            )
+
+        args = self.propagator.get_graph_args(callbacks=callbacks)
+        if self.config.get("checkpoint_enabled"):
+            args.setdefault("config", {}).setdefault("configurable", {})[
+                "thread_id"
+            ] = thread_id(company_name, trade_date_str)
+
+        return init_agent_state, args, resumed
+
+    def finalize_run(self, trade_date, final_state: Dict[str, Any]) -> None:
+        """Persist a successful run and clear its checkpoint."""
         self.curr_state = final_state
-
-        # Log state
         self._log_state(trade_date, final_state)
+        self.memory_log.store_decision(
+            final_state["company_of_interest"],
+            str(trade_date),
+            final_state["final_trade_decision"],
+        )
 
-        # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        if self.config.get("checkpoint_enabled") and self.ticker:
+            clear_checkpoint(
+                self.config["data_cache_dir"], self.ticker, str(trade_date)
+            )
+
+    def close_run(self) -> None:
+        """Close any active checkpoint context and restore the default graph."""
+        if self._checkpointer_ctx is None:
+            return
+
+        self._checkpointer_ctx.__exit__(None, None, None)
+        self._checkpointer_ctx = None
+        self.graph = self.workflow.compile()
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -271,22 +316,68 @@ class TradingAgentsGraph:
         ) as f:
             json.dump(self.log_states_dict, f, indent=4)
 
+    def _fetch_returns(self, ticker: str, trade_date: str):
+        """Fetch stock and benchmark returns after a trade date."""
+        start = datetime.strptime(str(trade_date), "%Y-%m-%d")
+        end = start + timedelta(days=14)
+
+        stock_history = yf.Ticker(ticker).history(
+            start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"),
+            auto_adjust=False,
+        )
+        benchmark_history = yf.Ticker("SPY").history(
+            start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"),
+            auto_adjust=False,
+        )
+
+        common_points = min(len(stock_history), len(benchmark_history))
+        if common_points < 2:
+            return None, None, None
+
+        end_idx = common_points - 1
+        stock_raw = (
+            float(stock_history["Close"].iloc[end_idx]) / float(stock_history["Close"].iloc[0])
+        ) - 1.0
+        benchmark_raw = (
+            float(benchmark_history["Close"].iloc[end_idx]) / float(benchmark_history["Close"].iloc[0])
+        ) - 1.0
+        return stock_raw, stock_raw - benchmark_raw, end_idx
+
+    def _resolve_pending_entries(self, ticker: str) -> None:
+        """Resolve any past pending entries for this ticker when returns are now available."""
+        updates = []
+        for entry in self.memory_log.get_pending_entries():
+            if entry["ticker"] != ticker:
+                continue
+            raw_return, alpha_return, holding_days = self._fetch_returns(
+                entry["ticker"], entry["date"]
+            )
+            if raw_return is None or alpha_return is None or holding_days is None:
+                continue
+            reflection = self.reflector.reflect_on_final_decision(
+                final_decision=entry["decision"],
+                raw_return=raw_return,
+                alpha_return=alpha_return,
+            )
+            updates.append(
+                {
+                    "ticker": entry["ticker"],
+                    "trade_date": entry["date"],
+                    "raw_return": raw_return,
+                    "alpha_return": alpha_return,
+                    "holding_days": holding_days,
+                    "reflection": reflection,
+                }
+            )
+
+        if updates:
+            self.memory_log.batch_update_with_outcomes(updates)
+
     def reflect_and_remember(self, returns_losses):
-        """Reflect on decisions and update memory based on returns."""
-        self.reflector.reflect_bull_researcher(
-            self.curr_state, returns_losses, self.bull_memory
-        )
-        self.reflector.reflect_bear_researcher(
-            self.curr_state, returns_losses, self.bear_memory
-        )
-        self.reflector.reflect_trader(
-            self.curr_state, returns_losses, self.trader_memory
-        )
-        self.reflector.reflect_invest_judge(
-            self.curr_state, returns_losses, self.invest_judge_memory
-        )
-        self.reflector.reflect_portfolio_manager(
-            self.curr_state, returns_losses, self.portfolio_manager_memory
+        raise RuntimeError(
+            "Deferred reflections are automatic now. Re-run the ticker after return data is available to resolve pending memory-log entries."
         )
 
     def process_signal(self, full_signal):

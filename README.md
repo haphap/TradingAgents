@@ -28,6 +28,7 @@
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
 ## News
+- [2026-04] **TradingAgents v0.24** released with checkpoint/resume support, structured manager/trader outputs, a deferred trading memory log, provider base URL fixes, lazy LLM client loading, and broader UTF-8 file I/O hardening.
 - [2026-03] **TradingAgents v0.2.3** released with multi-language support, GPT-5.4 family models, unified model catalog, backtesting date fidelity, and proxy support.
 - [2026-03] **TradingAgents v0.2.2** released with GPT-5.4/Gemini 3.1/Claude 4.6 model coverage, five-tier rating scale, OpenAI Responses API, Anthropic effort control, and cross-platform stability.
 - [2026-02] **TradingAgents v0.2.0** released with multi-provider LLM support (GPT-5.x, Gemini 3.x, Claude 4.x, Grok 4.x) and improved system architecture.
@@ -147,6 +148,15 @@ tradingagents          # installed command
 python -m cli.main     # alternative: run directly from source
 ```
 You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
+
+To make long-running analyses resumable after interruption, enable checkpoints:
+
+```bash
+tradingagents analyze --checkpoint
+tradingagents analyze --clear-checkpoints --checkpoint
+```
+
+Trading decisions are also written to a persistent memory log at `results/trading_memory.md` by default. You can change this with `memory_log_path`, and optionally cap resolved entries with `memory_log_max_entries`.
 
 <p align="center">
   <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">

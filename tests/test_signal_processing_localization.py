@@ -25,6 +25,8 @@ class SignalProcessingLocalizationTests(unittest.TestCase):
             processor.process_signal("FINAL TRANSACTION PROPOSAL: **BUY**"),
             "BUY",
         )
+        self.assertEqual(processor.process_signal("Rating: **OVERWEIGHT**"), "OVERWEIGHT")
+        self.assertEqual(processor.process_signal("评级：**减持**"), "UNDERWEIGHT")
 
 
 if __name__ == "__main__":
