@@ -66,6 +66,8 @@ CLI_SECTION_TITLES = {
     "final_trade_decision": ("Portfolio Management Decision", "投资组合管理决策"),
 }
 
+_CHINESE_SECTION_NUMERALS = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
+
 
 def _is_chinese_output() -> bool:
     return get_output_language().strip().lower() in CHINESE_OUTPUT_VALUES
@@ -82,6 +84,109 @@ def _localize_cli_role_title(role: str) -> str:
 def _localize_cli_section_title(section_name: str) -> str:
     english, chinese = CLI_SECTION_TITLES.get(section_name, (section_name, section_name))
     return _localize_cli_label(english, chinese)
+
+
+def _relevel_markdown_headings(content: str, target_min_level: int) -> str:
+    """Shift markdown headings so embedded reports preserve nested hierarchy."""
+    text = (content or "").strip()
+    if not text:
+        return ""
+
+    heading_pattern = re.compile(r"(?m)^(#{1,6})(\s+)")
+    levels = [len(match.group(1)) for match in heading_pattern.finditer(text)]
+    if not levels:
+        return text
+
+    offset = max(0, target_min_level - min(levels))
+    if offset == 0:
+        return text
+
+    def _replace(match: re.Match[str]) -> str:
+        level = min(6, len(match.group(1)) + offset)
+        return f"{'#' * level}{match.group(2)}"
+
+    return heading_pattern.sub(_replace, text)
+
+
+def _strip_heading_number_prefix(text: str) -> str:
+    stripped = (text or "").strip()
+    patterns = (
+        r"^[一二三四五六七八九十]+、\s*",
+        r"^（[一二三四五六七八九十]+）\s*",
+        r"^\d+(?:\.\d+)*\.?\s*",
+        r"^[（(]\d+[）)]\s*",
+        r"^[①②③④⑤⑥⑦⑧⑨⑩]\s*",
+    )
+    for pattern in patterns:
+        stripped = re.sub(pattern, "", stripped)
+    return stripped.strip()
+
+
+def _format_heading_prefix(depth: int, index: int) -> str:
+    if depth == 0 and 1 <= index <= len(_CHINESE_SECTION_NUMERALS):
+        return f"{_CHINESE_SECTION_NUMERALS[index - 1]}、"
+    if depth == 1 and 1 <= index <= len(_CHINESE_SECTION_NUMERALS):
+        return f"（{_CHINESE_SECTION_NUMERALS[index - 1]}）"
+    if depth == 2:
+        return f"{index}. "
+    if depth == 3:
+        return f"({index}) "
+    if depth == 4 and 1 <= index <= 10:
+        circled = "①②③④⑤⑥⑦⑧⑨⑩"
+        return f"{circled[index - 1]} "
+    return ""
+
+
+def _normalize_report_heading_numbering(content: str) -> str:
+    text = (content or "").strip()
+    if not text or not _is_chinese_output():
+        return text
+
+    heading_pattern = re.compile(r"(?m)^(#{1,6})(\s+)(.+)$")
+    matches = list(heading_pattern.finditer(text))
+    if not matches:
+        return text
+
+    levels = [len(match.group(1)) for match in matches]
+    unique_levels = sorted(set(levels))
+    min_level = min(unique_levels)
+    min_level_count = sum(level == min_level for level in levels)
+    has_deeper_levels = any(level > min_level for level in levels)
+    title_level = min_level if min_level_count == 1 and has_deeper_levels else None
+    numbered_levels = [level for level in unique_levels if level != title_level]
+    if not numbered_levels:
+        return text
+
+    level_to_depth = {level: idx for idx, level in enumerate(numbered_levels)}
+    counters = [0] * max(5, len(numbered_levels))
+
+    def _replace(match: re.Match[str]) -> str:
+        level = len(match.group(1))
+        spacing = match.group(2)
+        heading_text = match.group(3).strip()
+        if level == title_level or level not in level_to_depth:
+            return match.group(0)
+
+        depth = level_to_depth[level]
+        if depth > 4:
+            return match.group(0)
+
+        counters[depth] += 1
+        for idx in range(depth + 1, len(counters)):
+            counters[idx] = 0
+
+        prefix = _format_heading_prefix(depth, counters[depth])
+        clean_heading = _strip_heading_number_prefix(heading_text)
+        return f"{match.group(1)}{spacing}{prefix}{clean_heading}"
+
+    return heading_pattern.sub(_replace, text)
+
+
+def _prepare_report_markdown(content: str, target_min_level: Optional[int] = None) -> str:
+    text = _normalize_report_heading_numbering(content)
+    if target_min_level is not None:
+        text = _relevel_markdown_headings(text, target_min_level)
+    return text
 
 
 # Create a deque to store recent messages with a maximum length
@@ -213,7 +318,8 @@ class MessageBuffer:
                
         if latest_section and latest_content:
             self.current_report = (
-                f"### {_localize_cli_section_title(latest_section)}\n{latest_content}"
+                f"### {_localize_cli_section_title(latest_section)}\n"
+                f"{_prepare_report_markdown(latest_content, 4)}"
             )
 
         # Update the final complete report
@@ -230,19 +336,23 @@ class MessageBuffer:
             )
             if self.report_sections.get("market_report"):
                 report_parts.append(
-                    f"### {_localize_cli_section_title('market_report')}\n{self.report_sections['market_report']}"
+                    f"### {_localize_cli_section_title('market_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['market_report'], 4)}"
                 )
             if self.report_sections.get("sentiment_report"):
                 report_parts.append(
-                    f"### {_localize_cli_section_title('sentiment_report')}\n{self.report_sections['sentiment_report']}"
+                    f"### {_localize_cli_section_title('sentiment_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['sentiment_report'], 4)}"
                 )
             if self.report_sections.get("news_report"):
                 report_parts.append(
-                    f"### {_localize_cli_section_title('news_report')}\n{self.report_sections['news_report']}"
+                    f"### {_localize_cli_section_title('news_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['news_report'], 4)}"
                 )
             if self.report_sections.get("fundamentals_report"):
                 report_parts.append(
-                    f"### {_localize_cli_section_title('fundamentals_report')}\n{self.report_sections['fundamentals_report']}"
+                    f"### {_localize_cli_section_title('fundamentals_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['fundamentals_report'], 4)}"
                 )
 
         # Research Team Reports
@@ -250,21 +360,31 @@ class MessageBuffer:
             report_parts.append(
                 f"## {_localize_cli_section_title('investment_plan')}"
             )
-            report_parts.append(f"{self.report_sections['investment_plan']}")
+            report_parts.append(
+                _prepare_report_markdown(self.report_sections["investment_plan"], 3)
+            )
 
         # Trading Team Reports
         if self.report_sections.get("trader_investment_plan"):
             report_parts.append(
                 f"## {_localize_cli_section_title('trader_investment_plan')}"
             )
-            report_parts.append(f"{self.report_sections['trader_investment_plan']}")
+            report_parts.append(
+                _prepare_report_markdown(
+                    self.report_sections["trader_investment_plan"], 3
+                )
+            )
 
         # Portfolio Management Decision
         if self.report_sections.get("final_trade_decision"):
             report_parts.append(
                 f"## {_localize_cli_section_title('final_trade_decision')}"
             )
-            report_parts.append(f"{self.report_sections['final_trade_decision']}")
+            report_parts.append(
+                _prepare_report_markdown(
+                    self.report_sections["final_trade_decision"], 3
+                )
+            )
 
         self.final_report = "\n\n".join(report_parts) if report_parts else None
 
@@ -361,7 +481,7 @@ def _format_grouped_rounds(
     if manager_title and manager_content and manager_content.strip():
         parts.append(
             f"### {manager_title}\n"
-            f"{_format_manager_decision(manager_content, manager_snapshot_path, show_snapshot_summary=manager_show_snapshot)}"
+            f"{_format_manager_decision(manager_content, manager_snapshot_path, show_snapshot_summary=manager_show_snapshot, nested_min_heading_level=4)}"
         )
 
     return "\n\n".join(parts).strip()
@@ -371,6 +491,7 @@ def _format_manager_decision(
     manager_content: str,
     snapshot_path: str = "",
     show_snapshot_summary: bool = True,
+    nested_min_heading_level: Optional[int] = None,
 ) -> str:
     """Show the manager's conclusion first, then a short snapshot summary."""
     content = (manager_content or "").strip()
@@ -378,6 +499,10 @@ def _format_manager_decision(
         return ""
 
     body = normalize_chinese_manager_terms(strip_all_feedback_snapshots(content))
+    if nested_min_heading_level is not None:
+        body = _prepare_report_markdown(body, nested_min_heading_level)
+    else:
+        body = _prepare_report_markdown(body)
     snapshot_summary = ""
     if show_snapshot_summary:
         snapshot = normalize_chinese_role_terms(extract_feedback_snapshot(content))
@@ -854,22 +979,29 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
     analyst_parts = []
     if final_state.get("market_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "market.md").write_text(final_state["market_report"], encoding="utf-8")
-        analyst_parts.append((_localize_cli_role_title("Market Analyst"), final_state["market_report"]))
+        market_report = _prepare_report_markdown(final_state["market_report"])
+        (analysts_dir / "market.md").write_text(market_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("Market Analyst"), market_report))
     if final_state.get("sentiment_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"], encoding="utf-8")
-        analyst_parts.append((_localize_cli_role_title("Social Analyst"), final_state["sentiment_report"]))
+        sentiment_report = _prepare_report_markdown(final_state["sentiment_report"])
+        (analysts_dir / "sentiment.md").write_text(sentiment_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("Social Analyst"), sentiment_report))
     if final_state.get("news_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "news.md").write_text(final_state["news_report"], encoding="utf-8")
-        analyst_parts.append((_localize_cli_role_title("News Analyst"), final_state["news_report"]))
+        news_report = _prepare_report_markdown(final_state["news_report"])
+        (analysts_dir / "news.md").write_text(news_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("News Analyst"), news_report))
     if final_state.get("fundamentals_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "fundamentals.md").write_text(final_state["fundamentals_report"], encoding="utf-8")
-        analyst_parts.append((_localize_cli_role_title("Fundamentals Analyst"), final_state["fundamentals_report"]))
+        fundamentals_report = _prepare_report_markdown(final_state["fundamentals_report"])
+        (analysts_dir / "fundamentals.md").write_text(fundamentals_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("Fundamentals Analyst"), fundamentals_report))
     if analyst_parts:
-        content = "\n\n".join(f"### {name}\n{text}" for name, text in analyst_parts)
+        content = "\n\n".join(
+            f"### {name}\n{_prepare_report_markdown(text, 4)}"
+            for name, text in analyst_parts
+        )
         sections.append(
             f"## {_localize_cli_label('I. Analyst Team Reports', 'I. 分析团队报告')}\n\n{content}"
         )
@@ -894,6 +1026,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
                     debate["judge_decision"],
                     debate.get("judge_snapshot_path", ""),
                     show_snapshot_summary=True,
+                    nested_min_heading_level=None,
                 ),
                 encoding="utf-8",
             )
@@ -913,10 +1046,12 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
     if final_state.get("trader_investment_plan"):
         trading_dir = save_path / "3_trading"
         trading_dir.mkdir(exist_ok=True)
-        (trading_dir / "trader.md").write_text(final_state["trader_investment_plan"], encoding="utf-8")
+        trader_plan = _prepare_report_markdown(final_state["trader_investment_plan"])
+        (trading_dir / "trader.md").write_text(trader_plan, encoding="utf-8")
         sections.append(
             f"## {_localize_cli_label('III. Trading Team Plan', 'III. 交易团队计划')}\n\n"
-            f"### {_localize_cli_role_title('Trader')}\n{final_state['trader_investment_plan']}"
+            f"### {_localize_cli_role_title('Trader')}\n"
+            f"{_prepare_report_markdown(trader_plan, 4)}"
         )
 
     # 4. Risk Management
@@ -956,11 +1091,13 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
                 risk["judge_decision"],
                 risk.get("judge_snapshot_path", ""),
                 show_snapshot_summary=False,
+                nested_min_heading_level=None,
             )
             (portfolio_dir / "decision.md").write_text(formatted_portfolio, encoding="utf-8")
             sections.append(
                 f"## {_localize_cli_label('V. Portfolio Manager Decision', 'V. 投资组合经理决策')}\n\n"
-                f"### {_localize_cli_role_title('Portfolio Manager')}\n{formatted_portfolio}"
+                f"### {_localize_cli_role_title('Portfolio Manager')}\n"
+                f"{_format_manager_decision(risk['judge_decision'], risk.get('judge_snapshot_path', ''), show_snapshot_summary=False, nested_min_heading_level=4)}"
             )
 
     # Write consolidated report

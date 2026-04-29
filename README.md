@@ -158,6 +158,8 @@ tradingagents analyze --clear-checkpoints --checkpoint
 
 Trading decisions are also written to a persistent memory log at `results/trading_memory.md` by default. You can change this with `memory_log_path`, and optionally cap resolved entries with `memory_log_max_entries`.
 
+For a direct provider-level sanity check of the structured Research Manager / Trader / Portfolio Manager flow, run `python scripts/smoke_structured_output.py <provider>`.
+
 <p align="center">
   <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
 </p>

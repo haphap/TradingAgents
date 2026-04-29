@@ -9,6 +9,7 @@ from tradingagents.agents.utils.agent_utils import (
     extract_feedback_snapshot,
     get_snapshot_template,
     make_display_snapshot,
+    normalize_chinese_role_terms,
     normalize_display_numbering,
     strip_analyst_decision_summary,
     strip_feedback_snapshot,
@@ -34,13 +35,27 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("Content trimmed", truncated)
         self.assertTrue(truncated.endswith("qrstuvwxyz"))
 
-    def test_normalize_display_numbering_prefers_arabic_digits(self):
+    def test_normalize_display_numbering_keeps_chinese_headings(self):
         text = "一、核心观点\n② 跟踪订单\n③ 跟踪利润率"
         normalized = normalize_display_numbering(text)
 
-        self.assertIn("1. 核心观点", normalized)
+        self.assertIn("一、核心观点", normalized)
         self.assertIn("2. 跟踪订单", normalized)
         self.assertIn("3. 跟踪利润率", normalized)
+
+    def test_normalize_chinese_role_terms_translates_mixed_finance_terms(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        text = "Capex、Forward PE、quarterly earnings、scalability，以及全轮次交锋都需要统一。"
+        normalized = normalize_chinese_role_terms(text)
+
+        self.assertIn("资本开支", normalized)
+        self.assertIn("前瞻市盈率", normalized)
+        self.assertIn("单季度业绩", normalized)
+        self.assertIn("规模扩张能力", normalized)
+        self.assertIn("全轮次辩论", normalized)
 
     def test_feedback_snapshot_helpers(self):
         response = (
@@ -177,6 +192,71 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("- 置信度: 80%", summary)
         self.assertNotIn("Reflections from similar situations", body)
         self.assertNotIn("<final_answer>", body)
+
+    def test_analyst_decision_summary_aligns_risk_rating_and_numeric_format(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "论证正文。\n\n"
+            "风险建议: **设止损后持有**\n\n"
+            "决策摘要:\n"
+            "- 评级: 强烈看多并坚定持有\n"
+            "- 置信度: 百分之七十五\n"
+            "- 时间区间: 未来一至三个月\n"
+            "- 关键假设:\n"
+            "  1. 股价重新站上五十日均线上方。\n"
+            "  2. 港股融资规模控制在三十亿美元以内。\n"
+        )
+
+        summary = extract_analyst_decision_summary(response)
+
+        self.assertIn("- 评级: 持有", summary)
+        self.assertNotIn("强烈看多并坚定持有", summary)
+        self.assertIn("- 置信度: 75%", summary)
+        self.assertIn("- 时间区间: 未来1—3个月", summary)
+        self.assertIn("50日均线上方", summary)
+        self.assertIn("30亿美元以内", summary)
+
+    def test_normalize_chinese_role_terms_converts_precise_numeric_expressions(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        normalized = normalize_chinese_role_terms(
+            "平均真实波幅升至三十三点一五元，股价高于五十日均线，"
+            "估值偏离幅度在百分之四十以上，观察周期为未来一至三个月。"
+        )
+
+        self.assertIn("33.15元", normalized)
+        self.assertIn("50日均线", normalized)
+        self.assertIn("40%以上", normalized)
+        self.assertIn("1—3个月", normalized)
+
+    def test_risk_recommendation_with_hedge_language_normalizes_to_underweight(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        response = (
+            "论证正文。\n\n"
+            "风险建议: **分批调整，保留底仓动态对冲**\n\n"
+            "决策摘要:\n"
+            "- 评级: 持有\n"
+            "- 置信度: 70%\n"
+            "- 时间区间: 未来一至三个月\n"
+            "- 关键假设:\n"
+            "  1. 波动率仍偏高。\n"
+            "  2. 价格结构尚未完全修复。\n"
+        )
+
+        normalized = normalize_chinese_role_terms(response)
+        summary = extract_analyst_decision_summary(normalized)
+
+        self.assertIn("风险建议: **分批减仓，控制回撤**", normalized)
+        self.assertIn("- 评级: 减持", summary)
+        self.assertNotIn("- 评级: 持有", summary)
 
     def test_feedback_snapshot_infers_substantive_chinese_content_when_placeholder_block_is_used(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -394,7 +474,7 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
 
         snapshot = extract_feedback_snapshot(response)
 
-        self.assertIn("- 立场: 设止损后持有", snapshot)
+        self.assertIn("- 立场: 维持现仓，等待确认信号", snapshot)
         self.assertNotIn("- 立场: 增持", snapshot)
 
 

@@ -128,6 +128,23 @@ class StructuredAgentTests(unittest.TestCase):
         self.assertIn("FINAL TRANSACTION PROPOSAL: **HOLD**", result["final_trade_decision"])
         self.assertIn("FEEDBACK SNAPSHOT:", result["final_trade_decision"])
 
+    def test_trader_falls_back_when_structured_invoke_fails(self):
+        llm = MagicMock()
+        structured = MagicMock()
+        structured.invoke.side_effect = ValueError("bad structured payload")
+        llm.with_structured_output.return_value = structured
+        llm.invoke.return_value = _FakeResponse(
+            "## Trading Thesis\nFallback thesis.\n\n"
+            "## Execution Plan\nWait.\n\n"
+            "## Risk Management\nWatch support.\n\n"
+            "FINAL TRANSACTION PROPOSAL: **HOLD**"
+        )
+
+        result = create_trader(llm)(copy.deepcopy(_base_state()))
+
+        self.assertIn("Fallback thesis.", result["trader_investment_plan"])
+        self.assertIn("FINAL TRANSACTION PROPOSAL: **HOLD**", result["trader_investment_plan"])
+
 
 if __name__ == "__main__":
     unittest.main()

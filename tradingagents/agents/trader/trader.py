@@ -2,17 +2,38 @@ import functools
 from langchain_core.messages import AIMessage
 
 from tradingagents.agents.schemas import TraderProposal, render_trader_proposal
-from tradingagents.agents.utils.structured import invoke_structured_or_freetext
-from tradingagents.content_utils import extract_text_content
+from tradingagents.agents.utils.structured import bind_structured, invoke_structured_or_freetext
 from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     get_language_instruction,
     get_localized_final_proposal_instruction,
+    get_output_language,
+    normalize_chinese_manager_terms,
     truncate_for_prompt,
 )
 
 
+def _trader_detail_instruction() -> str:
+    if get_output_language().strip().lower() in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}:
+        return (
+            "对于执行计划和风险控制，不能只写“等待支撑”“观察成交量”这类泛化表述而不给解释。"
+            "请明确什么算关键支撑或阻力，并优先引用市场报告中的具体类型，例如50日均线、布林中轨、前低或密集成交区；"
+            "同时说明成交量改善应相对近5日或20日均量达到什么程度，"
+            "以及什么样的催化确认才足以支持加仓、持有、减仓或退出。"
+            "这两部分必须写成完整分析段落，并给出清晰阈值与触发条件。"
+        )
+    return (
+        "For the execution plan and risk controls, do not use generic phrases such as 'wait for support' or 'watch volume' without explanation. "
+        "Spell out what counts as key support or resistance by referencing the market report (for example the 50-day moving average, Bollinger mid-band, prior swing low, or dense volume area), "
+        "what level of volume recovery counts as improvement (for example versus recent 5-day or 20-day average volume), "
+        "and what specific catalyst confirmation would justify adding, holding, reducing, or exiting. "
+        "Write these sections as full analytical paragraphs with explicit thresholds and trigger conditions."
+    )
+
+
 def create_trader(llm, memory=None):
+    structured_llm = bind_structured(llm, TraderProposal, "Trader")
+
     def trader_node(state, name):
         company_name = state["company_of_interest"]
         instrument_context = build_instrument_context(company_name)
@@ -34,18 +55,23 @@ def create_trader(llm, memory=None):
                     "You are a trading agent analyzing market data to make investment decisions. "
                     "Provide a clear thesis, an execution plan, and explicit risk controls. "
                     "If you mention timing in Chinese output, translate it as 时机 or 节奏 instead of leaving the English word. "
-                    "Use Arabic numerals such as 1. 2. 3. for any numbered items. "
+                    "For ordinary lists, use Arabic numerals such as 1. 2. 3.; if you use Chinese section headings, keep forms like 一、二、三. "
+                    f"{_trader_detail_instruction()} "
                     f"{get_localized_final_proposal_instruction()}{get_language_instruction()}"
                 ),
             },
             context,
         ]
 
-        result = invoke_structured_or_freetext(llm, messages, TraderProposal)
-        if isinstance(result, TraderProposal):
-            rendered_result = render_trader_proposal(result)
-        else:
-            rendered_result = extract_text_content(result)
+        rendered_result = normalize_chinese_manager_terms(
+            invoke_structured_or_freetext(
+                structured_llm,
+                llm,
+                messages,
+                render_trader_proposal,
+                "Trader",
+            )
+        )
 
         return {
             "messages": [AIMessage(content=rendered_result)],

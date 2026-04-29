@@ -8,6 +8,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_indicators,
     get_language_instruction,
     get_stock_data,
+    normalize_chinese_role_terms,
     truncate_for_prompt,
 )
 from tradingagents.tool_report_utils import run_tool_report_chain
@@ -98,7 +99,7 @@ Existing conversation data:
 Additional indicator data fetched to complete the report:
 {additional_indicator_data}
 """
-    return extract_text_content(llm.invoke(rewrite_prompt).content)
+    return normalize_chinese_role_terms(extract_text_content(llm.invoke(rewrite_prompt).content))
 
 
 def create_market_analyst(llm):
@@ -185,6 +186,7 @@ Volume-Based Indicators:
             current_date=current_date,
             instrument_context=instrument_context,
         )
+        report = normalize_chinese_role_terms(report) if report else report
 
         needs_completion = (
             not getattr(result, "tool_calls", None)
@@ -207,6 +209,8 @@ Volume-Based Indicators:
             if completed_report:
                 result = AIMessage(content=completed_report)
                 report = completed_report
+        elif report and not getattr(result, "tool_calls", None):
+            result = AIMessage(content=report)
 
         return {
             "messages": [result],

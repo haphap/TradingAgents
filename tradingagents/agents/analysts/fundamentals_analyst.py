@@ -32,6 +32,14 @@ _INCOMPLETE_FUNDAMENTALS_MARKERS = (
     "估值数据缺失",
     "无股价",
     "股价缺失",
+    "当前数据源未提供总资产",
+    "当前数据源未提供总负债",
+    "当前数据源未提供总资产、总负债、资产负债率及期末现金余额",
+    "当前数据源中未提供明确的同业样本数据",
+    "无直接同业样本",
+    "亦无前瞻盈利预测值",
+    "暂无晚于",
+    "无业绩预告，无前瞻pe数据",
     "missing total assets",
     "missing total liabilities",
     "missing price",
@@ -98,6 +106,55 @@ def _report_has_full_fundamentals_coverage(report: str) -> bool:
     return all(any(keyword in normalized for keyword in group) for group in required_keyword_groups)
 
 
+def _tool_context_has_any(messages, *tokens: str) -> bool:
+    context = _collected_fundamentals_context(messages)
+    return any(token in context for token in tokens)
+
+
+def _report_contradicts_available_fundamental_data(report: str, messages) -> bool:
+    normalized_report = (report or "").lower()
+    if not normalized_report:
+        return True
+
+    contradictions = (
+        (
+            _tool_context_has_any(messages, "Total Assets:", "总资产", "Asset-Liability Ratio:", "Debt to Assets:", "Cash:"),
+            (
+                "当前数据源未提供总资产",
+                "当前数据源未提供总负债",
+                "当前数据源未提供总资产、总负债、资产负债率及期末现金余额",
+                "missing total assets",
+                "missing total liabilities",
+            ),
+        ),
+        (
+            _tool_context_has_any(messages, "Latest Forecast Announcement Date:", "Forecast Summary:", "Forecast Reason:"),
+            (
+                "当前数据源中暂无晚于",
+                "无业绩预告",
+                "亦无前瞻盈利预测值",
+                "no current earnings guidance",
+                "no earnings guidance",
+            ),
+        ),
+        (
+            _tool_context_has_any(messages, "Peer Sample Basis:", "Peer Sample:", "Target vs Peer Median:"),
+            (
+                "当前数据源中未提供明确的同业样本数据",
+                "无直接同业样本",
+                "未提供明确的同业样本数据",
+                "no peer sample",
+                "peer sample unavailable",
+            ),
+        ),
+    )
+
+    return any(
+        available and any(marker in normalized_report for marker in markers)
+        for available, markers in contradictions
+    )
+
+
 def _is_chinese_fundamentals_output() -> bool:
     return get_output_language().strip().lower() in {"chinese", "中文", "zh", "zh-cn", "zh-hans"}
 
@@ -138,22 +195,25 @@ def _normalize_fundamentals_report_text(report: str) -> str:
 def _rewrite_expectations() -> str:
     if _is_chinese_fundamentals_output():
         return """你必须使用以下中文标题，且只保留中文标题，不要出现英文标题或“英文+中文括号”：
-1. 核心概览与估值快照
-2. 资产负债表分析
-3. 利润表分析
-4. 现金流分析
-5. 增长、研发与主营业务分析
-6. 业绩预告与前瞻估值
-7. 同业对比
+一、核心概览与估值快照
+二、资产负债表分析
+三、利润表分析
+四、现金流分析
+五、增长、研发与主营业务分析
+六、业绩预告与前瞻估值
+七、同业对比
 
 写作要求：
 - 每一节都要先引用关键数据，再解释这些数据意味着什么，以及它们对盈利质量、估值安全边际、成长持续性、竞争格局和交易判断的影响。
 - 禁止只罗列数字或把工具结果改写成数据清单。
-- 如果提供了 PEG、研发强度、主营业务构成、业绩预告、forward PE 或同业样本，就必须纳入分析。
+        - 如果提供了 PEG、研发强度、主营业务构成、业绩预告、前瞻市盈率或同业样本，就必须纳入分析。
 - 研发部分要讨论研发费用规模、研发强度、对利润率的短期影响，以及对技术壁垒和产品竞争力的中长期意义。
-- 主营业务部分要结合 company profile / main business / segment mix，分析收入来源、业务集中度、结构变化与盈利弹性。
-- 业绩预告与前瞻估值部分：若存在晚于最新财报期的业绩预告并能计算 forward PE，就给出数值并解释；若没有，就明确说明暂无可用的前瞻指引。
+        - 主营业务部分要结合公司概况 / 主营业务 / 业务结构，分析收入来源、业务集中度、结构变化与盈利弹性。
+        - 业绩预告与前瞻估值部分：若存在晚于最新财报期的业绩预告并能计算前瞻市盈率，就给出数值并解释；若没有，就明确说明暂无可用的前瞻指引。
 - 同业对比部分：结合提供的 peer sample，比较至少两个维度（如 PE/PB/ROE/净利润增速），说明公司相对同业是溢价还是折价，以及这种定价是否合理。
+- 若工具结果中已经出现资产负债表关键快照、业绩预告字段或同业样本，不得写成“数据源未提供”。
+- 若存在历史业绩预告，但 `Forward PE Status` 明确说明该预告不晚于最新财报期，要准确表述为“有历史业绩预告，但不足以计算当前前瞻市盈率”，不要误写成“没有业绩预告”。
+- 若出现 `Peer Sample Basis`、`Peer Sample` 或 `Target vs Peer Median`，必须明确使用这些同业样本，不得写成“无同业样本”。
 - 避免套话，例如“根据最新工具输出数据”。
 - 末尾必须附上 Markdown 总结表，列至少包括：维度、关键数据、分析结论。
 """
@@ -175,6 +235,9 @@ Writing requirements:
 - The business mix section must use company profile / main business / segment mix to analyze revenue drivers, concentration, mix shift, and earnings sensitivity.
 - The guidance section must calculate and interpret forward PE when a forward-looking earnings guide newer than the latest reported period exists; otherwise say that no current guidance is available.
 - The peer section must compare at least two dimensions from the provided peer sample (for example PE/PB/ROE/net profit growth) and explain whether the company deserves a premium or discount.
+- If the tool output already includes balance-sheet key snapshots, earnings-guidance fields, or peer-sample fields, do not claim the data source failed to provide them.
+- If historical earnings guidance exists but `Forward PE Status` says that the forecast is not newer than the latest reported financial period, state that historical guidance exists but is insufficient for a current forward-PE calculation; do not claim there is no earnings guidance at all.
+- If `Peer Sample Basis`, `Peer Sample`, or `Target vs Peer Median` appears in the tool output, you must use that peer sample rather than writing that no peer sample is available.
 - Avoid filler phrases such as 'According to the latest tool output'.
 - End with a markdown summary table with at least: Dimension, Key Data, Analytical Takeaway.
 """
@@ -287,14 +350,15 @@ def create_fundamentals_analyst(llm):
         )
         report = _normalize_fundamentals_report_text(report) if report else report
 
+        report_messages = [*state["messages"], result]
         if not getattr(result, "tool_calls", None):
-            missing_tools = _missing_fundamental_tools([*state["messages"], result])
+            missing_tools = _missing_fundamental_tools(report_messages)
             completed_report = _rewrite_fundamentals_report(
                 llm,
                 state["company_of_interest"],
                 current_date,
                 instrument_context,
-                [*state["messages"], result],
+                report_messages,
                 missing_tools,
             )
             if completed_report:
@@ -302,6 +366,23 @@ def create_fundamentals_analyst(llm):
                 report = completed_report
         elif report:
             result = AIMessage(content=report)
+
+        final_messages = [*state["messages"], result]
+        if report and (
+            not _report_has_full_fundamentals_coverage(report)
+            or _report_contradicts_available_fundamental_data(report, final_messages)
+        ):
+            completed_report = _rewrite_fundamentals_report(
+                llm,
+                state["company_of_interest"],
+                current_date,
+                instrument_context,
+                final_messages,
+                _missing_fundamental_tools(final_messages),
+            )
+            if completed_report:
+                result = AIMessage(content=completed_report)
+                report = completed_report
 
         return {
             "messages": [result],

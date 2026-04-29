@@ -7,6 +7,9 @@ from tradingagents.agents.schemas import (
     PortfolioRating,
     ResearchPlan,
     TraderProposal,
+    render_portfolio_decision,
+    render_research_plan,
+    render_trader_proposal,
 )
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
@@ -168,6 +171,8 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         system_prompt = llm.structured_calls[0][0]["content"]
         self.assertIn("Write your entire response in Chinese.", system_prompt)
         self.assertIn("时机", system_prompt)
+        self.assertIn("关键支撑", system_prompt)
+        self.assertIn("成交量", system_prompt)
 
     def test_research_manager_prompt_respects_output_language(self):
         llm = _CapturingLLM()
@@ -302,6 +307,145 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         self.assertNotIn("Lessons from past decisions", prompt)
         self.assertIn("催化节奏", prompt)
         self.assertNotIn("catalyst timing", prompt)
+
+    def test_research_plan_rendering_drops_conflicting_recommendation_text(self):
+        rendered = render_research_plan(
+            ResearchPlan(
+                debate_conclusion="综合证据偏中性。",
+                action_logic="仍需等待更多确认信号。",
+                positioning_recommendation="针对300308.SZ，建议采取减持策略。继续跟踪订单兑现与估值消化。",
+                rating=PortfolioRating.HOLD,
+                snapshot_stance="持有",
+                snapshot_new_and_rebuttal="新增了对订单兑现节奏的约束。",
+                snapshot_to_verify="继续跟踪订单、毛利率和需求恢复。",
+            )
+        )
+
+        self.assertIn("建议评级: 持有", rendered)
+        self.assertNotIn("建议采取减持策略", rendered)
+        self.assertIn("继续跟踪订单兑现与估值消化", rendered)
+
+    def test_portfolio_decision_rendering_keeps_single_consistent_rating(self):
+        rendered = render_portfolio_decision(
+            PortfolioDecision(
+                debate_conclusion="多空争议仍在，但上行逻辑更完整。",
+                action_logic="在催化明确前仍需控制仓位节奏。",
+                positioning_recommendation="建议评级: 减持\n等待催化确认后再分批布局。",
+                rating=PortfolioRating.BUY,
+                snapshot_stance="减持",
+                snapshot_new_and_rebuttal="新增了对催化节奏的拆解。",
+                snapshot_to_verify="继续跟踪成交量、订单和毛利率。",
+            )
+        )
+
+        self.assertIn("建议评级: 买入", rendered)
+        self.assertNotIn("建议评级: 减持", rendered)
+        self.assertIn("最终交易建议: **买入**", rendered)
+        self.assertNotIn("反馈快照:\n- 立场: 减持", rendered)
+
+    def test_research_plan_rendering_replaces_placeholder_sections(self):
+        rendered = render_research_plan(
+            ResearchPlan(
+                debate_conclusion="评估双方论证强度，总结核心论点与致命弱点",
+                action_logic="估值、催化节奏、下行边界与确认/证伪信号的推演路径",
+                positioning_recommendation="明确评级与执行指引",
+                rating=PortfolioRating.UNDERWEIGHT,
+                snapshot_stance="减持",
+                snapshot_new_and_rebuttal="本轮新增与反驳",
+                snapshot_to_verify="待验证",
+            )
+        )
+
+        self.assertIn("建议评级: 减持", rendered)
+        self.assertNotIn("评估双方论证强度，总结核心论点与致命弱点", rendered)
+        self.assertNotIn("估值、催化节奏、下行边界与确认/证伪信号的推演路径", rendered)
+        self.assertNotIn("明确评级与执行指引", rendered)
+        self.assertNotIn("- 本轮新增与反驳: 本轮新增与反驳", rendered)
+        self.assertNotIn("- 待验证: 待验证", rendered)
+
+    def test_research_plan_rendering_expands_overly_brief_sections(self):
+        rendered = render_research_plan(
+            ResearchPlan(
+                debate_conclusion="多头略强。",
+                action_logic="等待验证。",
+                positioning_recommendation="继续观察关键变量。",
+                rating=PortfolioRating.HOLD,
+                snapshot_stance="持有",
+                snapshot_new_and_rebuttal="新增了对订单兑现节奏的约束。",
+                snapshot_to_verify="继续跟踪订单、毛利率和需求恢复。",
+            )
+        )
+
+        self.assertIn("多头略强。", rendered)
+        self.assertIn("由于现阶段还缺少能够打破平衡的新证据", rendered)
+        self.assertIn("等待验证。", rendered)
+        self.assertIn("执行逻辑上，应把注意力放在关键支撑、成交量变化、估值消化与后续业绩验证上", rendered)
+
+    def test_trader_rendering_rewrites_conflicting_execution_plan(self):
+        rendered = render_trader_proposal(
+            TraderProposal(
+                thesis="当前多空因素并存。",
+                execution_plan="1. 分批减持：在当前价位区间减持持仓的30%至50%。",
+                risk_management="继续跟踪关键支撑与业绩验证。",
+                rating=PortfolioRating.HOLD,
+            )
+        )
+
+        self.assertIn("最终交易建议: **持有**", rendered)
+        self.assertNotIn("分批减持", rendered)
+        self.assertIn("维持当前仓位", rendered)
+
+    def test_trader_rendering_expands_overly_brief_execution_plan(self):
+        rendered = render_trader_proposal(
+            TraderProposal(
+                thesis="当前多空因素并存。",
+                execution_plan="维持当前仓位，不主动追涨或杀跌；等待关键支撑企稳、成交量改善或新增催化落地后，再决定是否调整敞口。",
+                risk_management="继续跟踪关键支撑与业绩验证。",
+                rating=PortfolioRating.HOLD,
+            )
+        )
+
+        self.assertIn("50日均线、布林中轨、前低或密集成交区", rendered)
+        self.assertIn("较近5日均量放大15%—20%", rendered)
+        self.assertIn("订单、业绩指引或放量突破确认", rendered)
+        self.assertIn("20日均量的1.3倍以上", rendered)
+
+    def test_portfolio_decision_rendering_rewrites_conflicting_reduce_guidance(self):
+        rendered = render_portfolio_decision(
+            PortfolioDecision(
+                debate_conclusion="保守风险分析师观点占优。",
+                action_logic="当前技术破位与宏观去杠杆共振，立即执行分批减仓；若股价企稳再考虑回补。",
+                positioning_recommendation="建议评级: 持有\n建议评级为减持。\n分批减持当前持仓的百分之三十至百分之五十。",
+                rating=PortfolioRating.HOLD,
+                snapshot_stance="持有",
+                snapshot_new_and_rebuttal="新增了对波动率与风险预算的约束。",
+                snapshot_to_verify="继续跟踪关键支撑与成交量。",
+            )
+        )
+
+        self.assertIn("建议评级: 持有", rendered)
+        self.assertIn("最终交易建议: **持有**", rendered)
+        self.assertNotIn("建议评级为减持", rendered)
+        self.assertNotIn("分批减持当前持仓", rendered)
+        self.assertIn("维持当前仓位", rendered)
+
+    def test_portfolio_decision_rendering_expands_overly_brief_sections(self):
+        rendered = render_portfolio_decision(
+            PortfolioDecision(
+                debate_conclusion="中性观点更稳妥。",
+                action_logic="先别激进操作。",
+                positioning_recommendation="保留基础仓位。",
+                rating=PortfolioRating.HOLD,
+                snapshot_stance="持有",
+                snapshot_new_and_rebuttal="新增了对波动率与风险预算的约束。",
+                snapshot_to_verify="继续跟踪关键支撑与成交量。",
+            )
+        )
+
+        self.assertIn("中性观点更稳妥。", rendered)
+        self.assertIn("最稳妥的结论不是贸然加仓或减仓", rendered)
+        self.assertIn("先别激进操作。", rendered)
+        self.assertIn("当前更合理的动作是维持现有仓位", rendered)
 
     def test_collaboration_stop_instruction_prefers_chinese_display(self):
         instruction = get_collaboration_stop_instruction()

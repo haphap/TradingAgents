@@ -5,40 +5,11 @@ from pathlib import Path
 import re
 from typing import Any
 
-
-_RATING_MAP = {
-    "BUY": "Buy",
-    "OVERWEIGHT": "Overweight",
-    "HOLD": "Hold",
-    "UNDERWEIGHT": "Underweight",
-    "SELL": "Sell",
-    "买入": "Buy",
-    "增持": "Overweight",
-    "持有": "Hold",
-    "减持": "Underweight",
-    "卖出": "Sell",
-}
-_RATING_LABEL_PATTERN = re.compile(
-    r"(?im)^\s*(?:\d+\.\s*)?\**(?:FINAL TRANSACTION PROPOSAL|Rating|最终交易建议|评级)\**\s*[:：]\s*\**\s*"
-    r"(BUY|OVERWEIGHT|HOLD|UNDERWEIGHT|SELL|Buy|Overweight|Hold|Underweight|Sell|买入|增持|持有|减持|卖出)\s*\**\s*$"
-)
-_RATING_WORD_PATTERN = re.compile(
-    r"\b(BUY|OVERWEIGHT|HOLD|UNDERWEIGHT|SELL|Buy|Overweight|Hold|Underweight|Sell)\b|"
-    r"(买入|增持|持有|减持|卖出)"
-)
+from tradingagents.agents.utils.rating import parse_rating
 
 
 def _canonical_rating(decision: str) -> str:
-    text = (decision or "").strip()
-    match = _RATING_LABEL_PATTERN.search(text)
-    if match:
-        return _RATING_MAP[match.group(1).upper() if match.group(1).isascii() else match.group(1)]
-
-    prose_match = _RATING_WORD_PATTERN.search(text)
-    if prose_match:
-        token = prose_match.group(0)
-        return _RATING_MAP.get(token.upper(), _RATING_MAP.get(token, "Hold"))
-    return "Hold"
+    return parse_rating(decision).title()
 
 
 def _format_percent(value: float) -> str:
@@ -71,9 +42,9 @@ class TradingMemoryLog:
         cfg = config or {}
         configured_path = cfg.get("memory_log_path")
         if configured_path:
-            self.log_path = Path(configured_path)
+            self.log_path = Path(configured_path).expanduser()
         elif cfg.get("data_cache_dir"):
-            self.log_path = Path(cfg["data_cache_dir"]) / "trading_memory.md"
+            self.log_path = Path(cfg["data_cache_dir"]).expanduser() / "trading_memory.md"
         else:
             self.log_path = None
         self.max_entries = cfg.get("memory_log_max_entries")
@@ -261,16 +232,26 @@ class TradingMemoryLog:
         if not resolved:
             return ""
 
-        same_ticker = [entry for entry in resolved if entry.ticker == ticker][-n_same:]
-        cross_ticker = [entry for entry in resolved if entry.ticker != ticker][-n_cross:]
+        same_ticker: list[_Entry] = []
+        cross_ticker: list[_Entry] = []
+        for entry in reversed(resolved):
+            if entry.ticker == ticker and len(same_ticker) < n_same:
+                same_ticker.append(entry)
+            elif entry.ticker != ticker and len(cross_ticker) < n_cross:
+                cross_ticker.append(entry)
+            if len(same_ticker) >= n_same and len(cross_ticker) >= n_cross:
+                break
+
         sections = []
         if same_ticker:
             sections.append(
-                f"Past analyses of {ticker}:\n" + "\n\n".join(self._context_block(entry) for entry in same_ticker)
+                f"Past analyses of {ticker} (most recent first):\n"
+                + "\n\n".join(self._context_block(entry) for entry in same_ticker)
             )
         if cross_ticker:
             sections.append(
-                "Recent cross-ticker lessons:\n" + "\n\n".join(self._context_block(entry) for entry in cross_ticker)
+                "Recent cross-ticker lessons:\n"
+                + "\n\n".join(self._reflection_context_block(entry) for entry in cross_ticker)
             )
         return "\n\n".join(section.strip() for section in sections if section).strip()
 
@@ -280,3 +261,12 @@ class TradingMemoryLog:
             f"DECISION:\n{entry.decision.strip()}\n\n"
             f"REFLECTION:\n{entry.reflection.strip()}"
         ).strip()
+
+    def _reflection_context_block(self, entry: _Entry) -> str:
+        tag = f"[{entry.date} | {entry.ticker} | {entry.rating} | {entry.raw or 'n/a'}]"
+        if entry.reflection.strip():
+            return f"{tag}\n{entry.reflection.strip()}"
+        excerpt = entry.decision.strip()
+        if len(excerpt) > 300:
+            excerpt = excerpt[:297].rstrip() + "..."
+        return f"{tag}\n{excerpt}".strip()

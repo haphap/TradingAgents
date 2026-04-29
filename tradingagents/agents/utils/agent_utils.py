@@ -3,6 +3,11 @@ from difflib import SequenceMatcher
 import os
 import re
 
+from tradingagents.agents.utils.rating import (
+    detect_chinese_rating as _shared_detect_chinese_rating,
+    detect_english_rating as _shared_detect_english_rating,
+    parse_rating,
+)
 from tradingagents.content_utils import extract_text_content
 
 # Re-export data tools for backward compatibility (analysts import them from here)
@@ -32,7 +37,11 @@ def get_language_instruction() -> str:
     lang = get_config().get("output_language", "English")
     if lang.strip().lower() == "english":
         return ""
-    return f" Write your entire response in {lang}."
+    return (
+        f" Write your entire response in {lang}."
+        " Translate mixed English finance terms into Chinese as well, including items such as"
+        " Capex, Forward PE, quarterly earnings, and scalability."
+    )
 
 
 def get_no_greeting_instruction() -> str:
@@ -118,7 +127,7 @@ def get_snapshot_writing_instruction(round_index: int = 1) -> str:
         return (
             "反馈快照是对本轮核心内容的完整、详细记录，必须用自己的语言概括，禁止从正文中直接复制句子。\n"
             "每个字段应展开2-4句，包含完整的逻辑链和具体数据，让读者无需阅读正文即可理解本轮论点的全貌。"
-            "如需编号，只能使用阿拉伯数字，例如 1. 2. 3.，不要使用中文序号或圈号数字：\n\n"
+            "普通列表如需编号，优先使用阿拉伯数字，例如 1. 2. 3.；若是中文章节标题，可保留「一、二、三」：\n\n"
             "「立场」：明确评级 + 核心理由 + 当前最关键的支撑或风险因素。"
             "如「维持减持——30倍PE在商品周期顶部严重透支，MACD死叉确认趋势转弱，"
             "36元支撑位一旦击穿将触发止损盘连锁卖出，下行目标看至32元」；\n\n"
@@ -220,10 +229,91 @@ _CHINESE_NUMBERING_MAP = {
     "九": 9,
     "十": 10,
 }
+_CHINESE_DIGIT_VALUES = {
+    "零": 0,
+    "〇": 0,
+    "○": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+_CHINESE_SMALL_UNITS = {"十": 10, "百": 100, "千": 1000}
+_CHINESE_LARGE_UNITS = {"万": 10_000, "亿": 100_000_000}
+_CHINESE_NUMERIC_TOKEN_RE = r"[负零〇○一二两三四五六七八九十百千万亿点]+"
+_CHINESE_BASE_NUMERIC_TOKEN_RE = r"[负零〇○一二两三四五六七八九十百点]+"
+_NUMERIC_UNIT_OPTIONS = tuple(
+    sorted(
+        {
+            "亿美元",
+            "亿港元",
+            "亿元",
+            "万元",
+            "美元",
+            "港元",
+            "元",
+            "日均线",
+            "周均线",
+            "月均线",
+            "年均线",
+            "均线",
+            "日线",
+            "周线",
+            "月线",
+            "个月",
+            "小时",
+            "分钟",
+            "秒",
+            "时",
+            "天",
+            "周",
+            "年",
+            "月",
+            "日",
+            "手",
+            "股",
+            "倍",
+            "太",
+        },
+        key=len,
+        reverse=True,
+    )
+)
+_NUMERIC_UNIT_RE = "|".join(re.escape(unit) for unit in _NUMERIC_UNIT_OPTIONS)
+_RISK_ACTION_RATING_RULES = (
+    ("卖出", (r"立即止损", r"清仓", r"全部卖出", r"坚决卖出")),
+    (
+        "减持",
+        (
+            r"减仓",
+            r"减持",
+            r"分批卖出",
+            r"逐步减仓",
+            r"小幅减仓",
+            r"坚决减仓",
+            r"降低敞口",
+            r"保留底仓",
+            r"底仓",
+            r"对冲",
+            r"动态对冲",
+            r"保护性对冲",
+            r"锁定利润",
+        ),
+    ),
+    ("买入", (r"坚决买入", r"分批建仓", r"满仓做多", r"激进加仓")),
+    ("增持", (r"小幅加仓", r"加仓", r"增持", r"提高仓位", r"扩大仓位")),
+    ("持有", (r"设止损后持有", r"谨慎持有", r"持仓不动", r"维持现仓", r"谨慎观望", r"分批调整", r"持有", r"观望")),
+)
 
 
 def normalize_display_numbering(text: str) -> str:
-    """Normalize visible numbering to Arabic numerals."""
+    """Normalize awkward visible numbering while preserving Chinese heading numerals."""
     if not text:
         return ""
 
@@ -234,20 +324,155 @@ def normalize_display_numbering(text: str) -> str:
             f"{digit}. ",
             normalized,
         )
+    return normalized
 
-    def _replace_heading(match: re.Match[str]) -> str:
-        numeral = _CHINESE_NUMBERING_MAP.get(match.group(2))
-        if numeral is None:
-            return match.group(0)
-        return f"{match.group(1)}{numeral}. "
+
+def _chinese_integer_to_int(token: str) -> int:
+    normalized = (token or "").replace("两", "二").replace("〇", "零").replace("○", "零")
+    if not normalized:
+        return 0
+
+    total = 0
+    section = 0
+    number = 0
+    for char in normalized:
+        if char in _CHINESE_DIGIT_VALUES:
+            number = _CHINESE_DIGIT_VALUES[char]
+            continue
+        if char in _CHINESE_SMALL_UNITS:
+            if number == 0:
+                number = 1
+            section += number * _CHINESE_SMALL_UNITS[char]
+            number = 0
+            continue
+        if char in _CHINESE_LARGE_UNITS:
+            section = (section + number) * _CHINESE_LARGE_UNITS[char]
+            total += section
+            section = 0
+            number = 0
+    return total + section + number
+
+
+def _convert_chinese_numeric_token(token: str) -> str:
+    token = (token or "").strip()
+    if not token:
+        return token
+
+    sign = ""
+    if token.startswith("负"):
+        sign = "-"
+        token = token[1:]
+
+    if "点" in token:
+        integer_part, decimal_part = token.split("点", 1)
+        integer_value = _chinese_integer_to_int(integer_part or "零")
+        decimals = "".join(
+            str(_CHINESE_DIGIT_VALUES[ch])
+            for ch in decimal_part
+            if ch in _CHINESE_DIGIT_VALUES
+        )
+        if decimals:
+            return f"{sign}{integer_value}.{decimals}"
+        return f"{sign}{integer_value}"
+
+    return f"{sign}{_chinese_integer_to_int(token)}"
+
+
+def normalize_chinese_numeric_expressions(text: str) -> str:
+    """Convert precise Chinese numeric expressions to Arabic numerals in visible Chinese output."""
+    if not text or not _is_chinese_output():
+        return text or ""
+
+    normalized = text
 
     normalized = re.sub(
-        r"(?m)^(\s*(?:#{1,6}\s*)?)([一二三四五六七八九十])[、.．]\s*",
-        _replace_heading,
+        rf"百分之({_CHINESE_NUMERIC_TOKEN_RE})(?:至|到|—|－|-|~|～)百分之({_CHINESE_NUMERIC_TOKEN_RE})(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            f"{_convert_chinese_numeric_token(match.group(1))}%—{_convert_chinese_numeric_token(match.group(2))}%"
+            f"{match.group(3) or ''}"
+        ),
         normalized,
     )
-    normalized = re.sub(r"(?m)^(\s*)（([一二三四五六七八九十])）\s*", _replace_heading, normalized)
+    normalized = re.sub(
+        rf"百分之({_CHINESE_NUMERIC_TOKEN_RE})(以上|以下|以内|以外|左右|上下)?",
+        lambda match: f"{_convert_chinese_numeric_token(match.group(1))}%{match.group(2) or ''}",
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_BASE_NUMERIC_TOKEN_RE})(亿|万)(美元|港元|元)(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            f"{_convert_chinese_numeric_token(match.group(1))}{match.group(2)}{match.group(3)}{match.group(4) or ''}"
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})(?:至|到|—|－|-|~|～)({_CHINESE_NUMERIC_TOKEN_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            f"{_convert_chinese_numeric_token(match.group(1))}—{_convert_chinese_numeric_token(match.group(2))}"
+            f"{match.group(3)}{match.group(4) or ''}"
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            f"{_convert_chinese_numeric_token(match.group(1))}{match.group(2)}{match.group(3) or ''}"
+        ),
+        normalized,
+    )
+
     return normalized
+
+
+def normalize_chinese_finance_terms(text: str) -> str:
+    """Normalize mixed Chinese/English finance terms in visible Chinese output."""
+    if not text or not _is_chinese_output():
+        return text or ""
+
+    replacements = (
+        (r"\bForward PE Status\b", "前瞻市盈率状态"),
+        (r"\bForward EPS\b", "前瞻每股收益"),
+        (r"\bForward PE\b", "前瞻市盈率"),
+        (r"\bforward EPS\b", "前瞻每股收益"),
+        (r"\bforward PE\b", "前瞻市盈率"),
+        (r"\bForward Valuation\b", "前瞻估值"),
+        (r"\bforward valuation\b", "前瞻估值"),
+        (r"\bforward earnings\b", "前瞻业绩"),
+        (r"\bEarnings Guidance\b", "业绩指引"),
+        (r"\bearnings guidance\b", "业绩指引"),
+        (r"\bquarterly earnings\b", "单季度业绩"),
+        (r"\bquarterly results\b", "单季度业绩"),
+        (r"\bquarterly report\b", "季度报告"),
+        (r"\bquarterly guidance\b", "单季度指引"),
+        (r"\bquarterly balance sheet\b", "季度资产负债表"),
+        (r"\bquarterly cashflow\b", "季度现金流量表"),
+        (r"\bquarterly income statement\b", "季度利润表"),
+        (r"\bcompany profile\b", "公司概况"),
+        (r"\bmain business\b", "主营业务"),
+        (r"\bbusiness mix\b", "业务结构"),
+        (r"\bsegment mix\b", "业务结构"),
+        (r"\bpeer sample\b", "同业样本"),
+        (r"\bCapex Cash Outflow\b", "资本开支现金流出"),
+        (r"\bcapex cash outflow\b", "资本开支现金流出"),
+        (r"\bCapex\b", "资本开支"),
+        (r"\bCAPEX\b", "资本开支"),
+        (r"\bcapex\b", "资本开支"),
+        (r"\bScalability\b", "规模扩张能力"),
+        (r"\bscalability\b", "规模扩张能力"),
+        (r"\bForward\b", "前瞻"),
+        (r"\bforward\b", "前瞻"),
+        (r"\bquarterly\b", "季度"),
+    )
+
+    normalized = text
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized)
+
+    return (
+        normalized.replace("全轮次交锋", "全轮次辩论")
+        .replace("多轮交锋", "多轮辩论")
+        .replace("交锋记录", "辩论记录")
+    )
 
 
 # Reverse mapping: Chinese → English (for always-include-both logic)
@@ -264,7 +489,10 @@ def normalize_chinese_role_terms(text: str) -> str:
         lambda match: CHINESE_ROLE_TERM_REPLACEMENTS[match.group(0)],
         text,
     )
-    return normalize_display_numbering(normalized)
+    normalized = _normalize_risk_recommendation_text(normalized)
+    normalized = normalize_display_numbering(normalized)
+    normalized = normalize_chinese_numeric_expressions(normalized)
+    return normalize_chinese_finance_terms(normalized)
 
 
 def localize_rating_term(term: str) -> str:
@@ -399,7 +627,9 @@ def get_aggressive_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为激进风险分析师，你的自然倾向是寻找高回报机会，但若本轮证据确实指向风险，"
             "也可以选择逐步减仓或立即止损——重要的是结论与论点保持自洽，而非机械地执行激进立场。"
-            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。"
+            "若输出“决策摘要”，其中“评级”必须严格使用“买入/增持/持有/减持/卖出”五档之一，并与风险建议保持一致。\n"
+            "风险建议的主动作必须与五档评级一一对应：买入=分批建仓，增持=小幅加仓，持有=维持现仓，减持=分批减仓，卖出=立即止损；不要混用跨档位动作。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
@@ -408,7 +638,9 @@ def get_aggressive_risk_instruction() -> str:
         "As the Aggressive Analyst your natural lean is high-reward entry, but if evidence "
         "this round clearly points to risk, gradual reduction or a stop-loss is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically aggressive. "
-        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'. "
+        "If you output a DECISION SUMMARY, its Rating must be exactly one of BUY / OVERWEIGHT / HOLD / UNDERWEIGHT / SELL and must align with the risk recommendation.\n"
+        "The primary action in the risk recommendation must map cleanly to the 5-tier rating: BUY=Build in Batches, OVERWEIGHT=Add Selectively, HOLD=Maintain Position, UNDERWEIGHT=Trim in Batches, SELL=Immediate Stop-Loss. Do not mix actions from different tiers.\n"
         "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
@@ -422,7 +654,9 @@ def get_conservative_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为保守风险分析师，你的自然倾向是保护资产、控制回撤，但若本轮证据确实支持机会，"
             "也可以选择维持仓位甚至小幅加仓——重要的是结论与论点保持自洽，而非机械地执行保守立场。"
-            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。"
+            "若输出“决策摘要”，其中“评级”必须严格使用“买入/增持/持有/减持/卖出”五档之一，并与风险建议保持一致。\n"
+            "风险建议的主动作必须与五档评级一一对应：买入=分批建仓，增持=小幅加仓，持有=维持现仓，减持=分批减仓，卖出=立即止损；不要混用跨档位动作。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
@@ -431,7 +665,9 @@ def get_conservative_risk_instruction() -> str:
         "As the Conservative Analyst your natural lean is capital protection, but if evidence "
         "this round genuinely supports a position, holding or a small increase is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically cautious. "
-        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'. "
+        "If you output a DECISION SUMMARY, its Rating must be exactly one of BUY / OVERWEIGHT / HOLD / UNDERWEIGHT / SELL and must align with the risk recommendation.\n"
+        "The primary action in the risk recommendation must map cleanly to the 5-tier rating: BUY=Build in Batches, OVERWEIGHT=Add Selectively, HOLD=Maintain Position, UNDERWEIGHT=Trim in Batches, SELL=Immediate Stop-Loss. Do not mix actions from different tiers.\n"
         "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
@@ -445,7 +681,9 @@ def get_neutral_risk_instruction() -> str:
             "先自我审查：你「立场」字段是否与你本轮实际论点一致？"
             "作为中性风险分析师，你的自然倾向是平衡两方观点，但若本轮证据明确偏向某一侧，"
             "也可以选择激进加仓或坚决减仓——重要的是结论与论点保持自洽，而非机械地居中立场。"
-            "请在正文结尾处使用格式 '风险建议: **[行动]**'。\n"
+            "请在正文结尾处使用格式 '风险建议: **[行动]**'。"
+            "若输出“决策摘要”，其中“评级”必须严格使用“买入/增持/持有/减持/卖出”五档之一，并与风险建议保持一致。\n"
+            "风险建议的主动作必须与五档评级一一对应：买入=分批建仓，增持=小幅加仓，持有=维持现仓，减持=分批减仓，卖出=立即止损；不要混用跨档位动作。\n"
             "请从以下完整词汇表中选择最符合你本轮论点的行动，可加修饰词体现节奏、幅度和条件：\n激进加仓 / 坚决买入 / 分批建仓 / 满仓做多 / 小幅加仓 / 持仓不动 /\n维持现仓 / 谨慎观望 / 分批调整 / 设止损后持有 / 小幅减仓 /\n逐步减仓 / 分批卖出 / 谨慎持有 / 坚决减仓 / 立即止损\n示例：风险建议: **逐步减仓，控制回撤至5%以内**  或  风险建议: **分批建仓，首批仓位不超过30%**"
         )
     return (
@@ -454,7 +692,9 @@ def get_neutral_risk_instruction() -> str:
         "As the Neutral Analyst your natural lean is balance, but if evidence "
         "this round clearly favors one side, aggressive accumulation or decisive reduction is valid — "
         "what matters is that your conclusion is self-consistent, not mechanically neutral. "
-        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'.\n"
+        "Conclude your main argument body with a line using format 'RISK RECOMMENDATION: **[action]**'. "
+        "If you output a DECISION SUMMARY, its Rating must be exactly one of BUY / OVERWEIGHT / HOLD / UNDERWEIGHT / SELL and must align with the risk recommendation.\n"
+        "The primary action in the risk recommendation must map cleanly to the 5-tier rating: BUY=Build in Batches, OVERWEIGHT=Add Selectively, HOLD=Maintain Position, UNDERWEIGHT=Trim in Batches, SELL=Immediate Stop-Loss. Do not mix actions from different tiers.\n"
         "Choose the action that best fits your argument this round from the full vocabulary below, adding modifiers for pace, scale, and conditions as needed:\nAggressively Accumulate / Decisively Buy / Build in Batches / Go All-In / Slightly Increase / Hold Firm /\nMaintain Position / Cautiously Observe / Adjust in Batches / Hold with Stop-Loss / Slightly Reduce /\nGradually Reduce / Sell in Batches / Hold with Caution / Decisively Reduce / Immediate Stop-Loss\nExample: RISK RECOMMENDATION: **Gradually Reduce, Cap Drawdown at 5%**  or  RISK RECOMMENDATION: **Build in Batches, Initial Position <=30%**"
     )
 
@@ -574,50 +814,107 @@ def _detect_risk_stance(text: str) -> str:
 
 def _detect_chinese_rating(text: str) -> str:
     content = normalize_chinese_role_terms(text or "")
-    if not content.strip():
-        return "持有"
-
-    for rating, pattern in CHINESE_RATING_EXPLICIT_PATTERNS:
-        match = pattern.search(content)
-        if not match:
-            continue
-        prefix = content[max(0, match.start() - 8):match.start()]
-        if CHINESE_RATING_NEGATION_PATTERN.search(prefix):
-            continue
-        return rating
-
-    for rating, pattern in CHINESE_RATING_HEURISTIC_PATTERNS:
-        for match in pattern.finditer(content):
-            prefix = content[max(0, match.start() - 8):match.start()]
-            if CHINESE_RATING_NEGATION_PATTERN.search(prefix):
-                continue
-            return rating
-
-    return "持有"
+    return _shared_detect_chinese_rating(content)
 
 
 def _detect_english_rating(text: str) -> str:
-    content = (text or "").lower()
-    if not content.strip():
-        return "HOLD"
+    return _shared_detect_english_rating(text)
 
-    for rating, pattern in ENGLISH_RATING_EXPLICIT_PATTERNS:
-        match = pattern.search(content)
-        if not match:
-            continue
-        prefix = content[max(0, match.start() - 12):match.start()]
-        if ENGLISH_RATING_NEGATION_PATTERN.search(prefix):
-            continue
-        return rating
 
-    for rating, pattern in ENGLISH_RATING_HEURISTIC_PATTERNS:
-        for match in pattern.finditer(content):
-            prefix = content[max(0, match.start() - 12):match.start()]
-            if ENGLISH_RATING_NEGATION_PATTERN.search(prefix):
-                continue
+def _canonicalize_risk_action_rating(action: str) -> str:
+    normalized = normalize_chinese_role_terms(action or "")
+    if not normalized:
+        return ""
+
+    for rating, patterns in _RISK_ACTION_RATING_RULES:
+        if any(re.search(pattern, normalized) for pattern in patterns):
             return rating
+    return ""
 
-    return "HOLD"
+
+def _canonical_risk_recommendation_text(rating: str, chinese: bool = True) -> str:
+    if chinese:
+        mapping = {
+            "买入": "分批建仓，积极布局",
+            "增持": "小幅加仓，控制节奏",
+            "持有": "维持现仓，等待确认信号",
+            "减持": "分批减仓，控制回撤",
+            "卖出": "立即止损，退出观察",
+        }
+        return mapping.get(rating, "")
+    mapping = {
+        "BUY": "Build in Batches, Lean Long",
+        "OVERWEIGHT": "Add Selectively, Control Pace",
+        "HOLD": "Maintain Position, Wait for Confirmation",
+        "UNDERWEIGHT": "Trim in Batches, Control Drawdown",
+        "SELL": "Stop Out, Stay Defensive",
+    }
+    return mapping.get(rating, "")
+
+
+def _normalize_risk_recommendation_text(text: str) -> str:
+    if not text:
+        return ""
+
+    def _replace(match: re.Match[str]) -> str:
+        marker = match.group(1)
+        raw_action = match.group(2).strip().strip("*").strip()
+        source_text = text
+        if "风险建议" in marker:
+            rating = _canonicalize_risk_action_rating(raw_action) or _shared_detect_chinese_rating(source_text)
+            canonical_action = _canonical_risk_recommendation_text(rating, chinese=True) or raw_action
+            return f"{marker} **{canonical_action}**"
+
+        upper_action = raw_action.upper()
+        rating = parse_rating(upper_action, default="HOLD")
+        canonical_action = _canonical_risk_recommendation_text(rating, chinese=False) or raw_action
+        return f"{marker} **{canonical_action}**"
+
+    return re.sub(
+        r"((?:风险建议|RISK RECOMMENDATION)\s*[:：])\s*\**(.+?)\**(?=$|\n)",
+        _replace,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def _canonicalize_decision_rating(value: str, source_text: str = "") -> str:
+    risk_rating = _canonicalize_risk_action_rating(_detect_risk_stance(source_text))
+    if risk_rating:
+        if _is_chinese_output():
+            return risk_rating
+        english_mapping = {
+            "买入": "BUY",
+            "增持": "OVERWEIGHT",
+            "持有": "HOLD",
+            "减持": "UNDERWEIGHT",
+            "卖出": "SELL",
+        }
+        return english_mapping.get(risk_rating, risk_rating)
+
+    if re.search(r"[A-Za-z]", value or "") and not re.search(r"[\u4e00-\u9fff]", value or ""):
+        detected_english = _detect_english_rating(value)
+        if detected_english:
+            return detected_english
+
+    if _is_chinese_output():
+        return _detect_chinese_rating(value)
+    return _detect_english_rating(value)
+
+
+def _normalize_decision_fields(fields: dict[str, str], source_text: str = "") -> dict[str, str]:
+    normalized_fields = {key: value.strip() for key, value in fields.items()}
+
+    if _is_chinese_output():
+        normalized_fields = {
+            key: normalize_chinese_role_terms(value) if value else value
+            for key, value in normalized_fields.items()
+        }
+
+    rating = _canonicalize_decision_rating(normalized_fields.get("rating", ""), source_text)
+    if rating:
+        normalized_fields["rating"] = rating
+    return normalized_fields
 
 
 def _extract_sentences(text: str) -> list[str]:
@@ -811,8 +1108,9 @@ def _parse_xml_decision_fields(text: str) -> dict[str, str]:
     return fields
 
 
-def _format_decision_summary_from_fields(fields: dict[str, str]) -> str:
-    if not any(value.strip() for value in fields.values()):
+def _format_decision_summary_from_fields(fields: dict[str, str], source_text: str = "") -> str:
+    normalized_fields = _normalize_decision_fields(fields, source_text=source_text)
+    if not any(value.strip() for value in normalized_fields.values()):
         return ""
 
     title = DECISION_SUMMARY_MARKERS[1] if _is_chinese_output() else DECISION_SUMMARY_MARKERS[0]
@@ -821,11 +1119,11 @@ def _format_decision_summary_from_fields(fields: dict[str, str]) -> str:
     lines = [title]
 
     for key, label in zip(keys[:-1], labels[:-1]):
-        value = fields.get(key, "").strip()
+        value = normalized_fields.get(key, "").strip()
         if value:
             lines.append(f"- {label}: {value}")
 
-    assumptions = fields.get("key_assumptions", "").strip()
+    assumptions = normalized_fields.get("key_assumptions", "").strip()
     if assumptions:
         lines.append(f"- {labels[-1]}:")
         for line in assumptions.splitlines():
@@ -855,11 +1153,11 @@ def extract_analyst_decision_summary(text: str) -> str:
                 end = min(end, idx)
         block = text[best_idx:end].strip()
         fields = _parse_markdown_decision_fields(block)
-        normalized = _format_decision_summary_from_fields(fields)
+        normalized = _format_decision_summary_from_fields(fields, source_text=text)
         return normalized or block
 
     fields = _parse_xml_decision_fields(text)
-    return _format_decision_summary_from_fields(fields)
+    return _format_decision_summary_from_fields(fields, source_text=text)
 
 
 def _strip_reflections_section(text: str) -> str:
@@ -1572,7 +1870,7 @@ def normalize_chinese_manager_terms(text: str) -> str:
         .replace("本轮双方", "整场辩论双方")
         .replace("本轮辩论", "整场辩论")
     )
-    body = normalize_display_numbering(body).strip()
+    body = normalize_chinese_finance_terms(normalize_display_numbering(body)).strip()
     if snapshot:
         return f"{body}\n\n{snapshot}".strip()
     return body

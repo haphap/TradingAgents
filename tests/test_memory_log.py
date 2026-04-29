@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -44,6 +45,23 @@ class TradingMemoryLogTests(unittest.TestCase):
             self.assertEqual("Momentum confirmed.", entries[0]["reflection"])
             self.assertIn("Past analyses of NVDA", log.get_past_context("NVDA"))
 
+    def test_past_context_keeps_same_ticker_full_and_cross_ticker_reflection_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log = self.make_log(Path(tmpdir) / "trading_memory.md")
+            log.store_decision("NVDA", "2026-01-10", "Rating: Buy\nEnter on pullbacks.")
+            log.update_with_outcome("NVDA", "2026-01-10", 0.042, 0.021, 5, "Momentum confirmed.")
+            log.store_decision("AAPL", "2026-01-12", "Rating: Hold\nWait for clearer setup.")
+            log.update_with_outcome("AAPL", "2026-01-12", 0.010, -0.005, 5, "Patience mattered.")
+
+            context = log.get_past_context("NVDA")
+
+            self.assertIn("Past analyses of NVDA (most recent first):", context)
+            self.assertIn("DECISION:\nRating: Buy\nEnter on pullbacks.", context)
+            self.assertIn("Recent cross-ticker lessons:", context)
+            self.assertIn("[2026-01-12 | AAPL | Hold | +1.0%]", context)
+            self.assertIn("Patience mattered.", context)
+            self.assertNotIn("DECISION:\nRating: Hold\nWait for clearer setup.", context)
+
     def test_rotation_keeps_recent_resolved_entries(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             log = self.make_log(
@@ -63,6 +81,13 @@ class TradingMemoryLogTests(unittest.TestCase):
         log.store_decision("NVDA", "2026-01-10", "Rating: Buy")
         self.assertEqual([], log.load_entries())
         self.assertEqual("", log.get_past_context("NVDA"))
+
+    def test_memory_log_path_expands_user_home(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            with patch.dict(os.environ, {"HOME": str(home)}):
+                log = TradingMemoryLog({"memory_log_path": "~/memory/trading_memory.md"})
+            self.assertEqual(home / "memory" / "trading_memory.md", log.log_path)
 
 
 class DeferredReflectionTests(unittest.TestCase):

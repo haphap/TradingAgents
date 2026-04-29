@@ -7,7 +7,9 @@ from tradingagents.agents.utils.agent_utils import (
     get_global_news,
     get_language_instruction,
     get_news,
+    normalize_chinese_role_terms,
 )
+from langchain_core.messages import AIMessage
 from tradingagents.tool_report_utils import run_tool_report_chain
 from tradingagents.dataflows.config import get_config
 
@@ -56,6 +58,9 @@ def create_news_analyst(llm):
             current_date=current_date,
             instrument_context=instrument_context,
         )
+        report = normalize_chinese_role_terms(report) if report else report
+        if report and not getattr(result, "tool_calls", None):
+            result = AIMessage(content=report)
 
         return {
             "messages": [result],

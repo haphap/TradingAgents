@@ -59,7 +59,7 @@ Your complete debate history: {bear_history}
 Bull's complete debate history: {bull_history}
 Last bull argument body: {current_response}
 When writing in Chinese, use the exact role names "{localize_role_name('Bear Analyst')}" and "{localize_role_name('Bull Analyst')}". Do not use variants like "熊派分析师" or "牛派分析师".
-Use Arabic numerals such as 1. 2. 3. for any numbered items.
+For ordinary lists, use Arabic numerals such as 1. 2. 3.; if you use Chinese section headings, keep forms like 一、二、三.
 Your main argument body must be written entirely in Chinese. {get_bear_proposal_instruction()}
 {get_analyst_decision_instruction()}
 Use this exact decision-summary template:

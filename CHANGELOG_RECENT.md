@@ -1,5 +1,47 @@
 # Recent Changelog
 
+## 0. `Unreleased` `Improve structured reporting and upstream sync`
+Date: 2026-04-29
+
+- Upstream-aligned runtime and parsing:
+  - Added shared bilingual 5-tier rating parsing in `tradingagents/agents/utils/rating.py`.
+  - Switched `tradingagents/graph/signal_processing.py` to deterministic shared rating parsing instead of LLM-dependent extraction.
+  - Reused the shared parser in `tradingagents/agents/utils/memory.py` so memory-log ratings match Research Manager / Portfolio Manager / signal processor output.
+  - Refactored `tradingagents/agents/utils/structured.py` and manager / trader wiring to use pre-bound structured output with explicit free-text fallback behavior.
+  - Added `scripts/smoke_structured_output.py` for manual structured-output smoke testing.
+- Report consistency and localization:
+  - Hardened `tradingagents/agents/schemas.py` so Research Manager, Trader, and Portfolio Manager outputs keep a single consistent 5-tier recommendation across rendered sections, snapshot stance, and final proposal lines.
+  - Replaced placeholder-like structured text with safe fallback prose when models emit schema descriptions instead of real analysis.
+  - Standardized Chinese-visible finance wording, translated mixed English finance terms, and normalized visible numeric expressions to Arabic numerals where appropriate.
+  - Reworked assembled-report heading numbering in `cli/main.py` to the official hierarchy style:
+    - `一、`
+    - `（一）`
+    - `1.`
+    - `(1)`
+    - `①`
+- Risk, manager, and trader output quality:
+  - Normalized visible risk recommendations to canonical actions so displayed action text no longer conflicts with the canonical rating.
+  - Strengthened risk-analyst prompts so free-form risk suggestions map cleanly to the 5-tier scale.
+  - Expanded Research Manager and Portfolio Manager prompt and render constraints so `辩论结论` / `行为逻辑` become full analytical paragraphs instead of terse restatements.
+  - Expanded Trader execution-plan and risk-control defaults so reports explain support definitions, volume thresholds, catalyst confirmation, and concrete trigger conditions instead of generic “watch support / watch volume” wording.
+- Fundamentals-report correctness:
+  - Hardened `tradingagents/agents/analysts/fundamentals_analyst.py` so final reports are rewritten when they falsely claim balance-sheet, guidance, forward-valuation, or peer-sample data is missing while the tool output already contains it.
+  - Tightened rewrite instructions so historical guidance that is too old for forward-PE calculation is described accurately rather than being misreported as “no guidance”.
+- Tests:
+  - Added `tests/test_signal_processing.py`.
+  - Expanded regression coverage in:
+    - `tests/test_context_memory_optimization.py`
+    - `tests/test_fundamentals_analyst.py`
+    - `tests/test_output_language_propagation.py`
+    - `tests/test_cli_round_formatting.py`
+    - `tests/test_structured_agents.py`
+    - `tests/test_memory_log.py`
+
+Impact:
+- Structured reports are more internally consistent, more detailed, and less likely to leak placeholder or contradictory model output.
+- Fundamentals reports now better respect the actual tool data instead of inventing missing-data narratives.
+- Rating vocabulary is unified across structured managers, signal extraction, and deferred memory logging.
+
 ## 1. `ba7cb2f` `Harden inferred rating detection`
 Date: 2026-04-03 16:50 +0800
 

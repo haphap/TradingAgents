@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from cli.main import (
     MessageBuffer,
+    _prepare_report_markdown,
     format_research_team_history,
     format_risk_management_history,
     process_chunk_messages,
@@ -187,15 +188,15 @@ class CliRoundFormattingTests(unittest.TestCase):
         formatted = format_research_team_history(debate_state)
 
         self.assertIn("### 研究经理结论", formatted)
-        self.assertIn("## 辩论结论", formatted)
-        self.assertIn("## 行为逻辑", formatted)
-        self.assertIn("## 持仓建议", formatted)
+        self.assertIn("#### 一、辩论结论", formatted)
+        self.assertIn("#### 二、行为逻辑", formatted)
+        self.assertIn("#### 三、持仓建议", formatted)
         self.assertIn("#### 反馈快照摘要", formatted)
         self.assertIn("本轮新增与反驳", formatted)
         self.assertIn("需求验证节奏的约束", formatted)
         self.assertIn("空头高估了估值压缩速度", formatted)
         self.assertNotIn("(完整内容见:", formatted)
-        self.assertLess(formatted.index("## 辩论结论"), formatted.index("#### 反馈快照摘要"))
+        self.assertLess(formatted.index("#### 一、辩论结论"), formatted.index("#### 反馈快照摘要"))
 
     def test_research_manager_dedupes_repeated_feedback_snapshots(self):
         repeated_snapshot = (
@@ -237,7 +238,7 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         formatted = format_research_team_history(debate_state)
 
-        self.assertIn("## 辩论结论", formatted)
+        self.assertIn("#### 一、辩论结论", formatted)
         self.assertIn("综合结论：整场辩论中双方论据势均力敌。", formatted)
         self.assertNotIn("判决结果", formatted)
         self.assertNotIn("本轮双方论点势均力敌", formatted)
@@ -346,9 +347,9 @@ class CliRoundFormattingTests(unittest.TestCase):
 
         formatted = format_risk_management_history(risk_state)
 
-        self.assertIn("## 辩论结论", formatted)
-        self.assertIn("## 行为逻辑", formatted)
-        self.assertIn("## 持仓建议", formatted)
+        self.assertIn("#### 一、辩论结论", formatted)
+        self.assertIn("#### 二、行为逻辑", formatted)
+        self.assertIn("#### 三、持仓建议", formatted)
         self.assertIn("时间区间", formatted)
         self.assertNotIn("time horizon", formatted.lower())
 
@@ -388,7 +389,7 @@ class CliRoundFormattingTests(unittest.TestCase):
 
     def test_save_report_to_disk_persists_complete_report_locally(self):
         final_state = {
-            "market_report": "市场分析内容",
+            "market_report": "# 宁德时代（300750.SZ）综合技术分析报告\n\n## 一、行情概览\n市场分析内容",
             "sentiment_report": "情绪分析内容",
             "news_report": "新闻分析内容",
             "fundamentals_report": "基本面分析内容",
@@ -419,7 +420,30 @@ class CliRoundFormattingTests(unittest.TestCase):
             self.assertTrue(report_path.exists())
             self.assertTrue((Path(tmpdir) / "4_risk" / "rounds.md").exists())
             self.assertTrue((Path(tmpdir) / "5_portfolio" / "decision.md").exists())
-            self.assertIn("交易分析报告", report_path.read_text())
+            report_text = report_path.read_text()
+            self.assertIn("交易分析报告", report_text)
+            self.assertIn("### 市场分析师", report_text)
+            self.assertIn("#### 宁德时代（300750.SZ）综合技术分析报告", report_text)
+            self.assertIn("##### 一、行情概览", report_text)
+
+    def test_prepare_report_markdown_normalizes_official_hierarchy(self):
+        text = (
+            "# 示例报告\n\n"
+            "## 一、总体判断\n\n"
+            "### 1.1 市场回顾\n\n"
+            "#### 1. 关键信号\n\n"
+            "##### ① 细项说明\n\n"
+            "###### 1. 更细分项"
+        )
+
+        normalized = _prepare_report_markdown(text)
+
+        self.assertIn("# 示例报告", normalized)
+        self.assertIn("## 一、总体判断", normalized)
+        self.assertIn("### （一）市场回顾", normalized)
+        self.assertIn("#### 1. 关键信号", normalized)
+        self.assertIn("##### (1) 细项说明", normalized)
+        self.assertIn("###### ① 更细分项", normalized)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
-# TradingAgents/graph/trading_graph.py
-
+import logging
 import os
 from pathlib import Path
 import json
@@ -15,9 +14,6 @@ from tradingagents.llm_clients import create_llm_client
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import TradingMemoryLog
-from tradingagents.agents.utils.agent_states import (
-    AgentState,
-)
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
@@ -39,6 +35,8 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
+
+logger = logging.getLogger(__name__)
 
 
 class TradingAgentsGraph:
@@ -107,11 +105,6 @@ class TradingAgentsGraph:
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.tool_nodes,
-            None,
-            None,
-            None,
-            None,
-            None,
             self.conditional_logic,
         )
 
@@ -119,7 +112,7 @@ class TradingAgentsGraph:
             max_recur_limit=self.config.get("max_recur_limit", 100)
         )
         self.reflector = Reflector(self.quick_thinking_llm)
-        self.signal_processor = SignalProcessor(self.quick_thinking_llm)
+        self.signal_processor = SignalProcessor()
 
         # State tracking
         self.curr_state = None
@@ -224,14 +217,24 @@ class TradingAgentsGraph:
         self._resolve_pending_entries(company_name)
 
         if self.config.get("checkpoint_enabled"):
+            step = checkpoint_step(
+                self.config["data_cache_dir"], company_name, trade_date_str
+            )
             self._checkpointer_ctx = get_checkpointer(
                 self.config["data_cache_dir"], company_name
             )
             saver = self._checkpointer_ctx.__enter__()
             self.graph = self.workflow.compile(checkpointer=saver)
-            resumed = checkpoint_step(
-                self.config["data_cache_dir"], company_name, trade_date_str
-            ) is not None
+            resumed = step is not None
+            if resumed:
+                logger.info(
+                    "Resuming from step %d for %s on %s",
+                    step,
+                    company_name,
+                    trade_date_str,
+                )
+            else:
+                logger.info("Starting fresh for %s on %s", company_name, trade_date_str)
 
         init_agent_state = None
         if not resumed:
@@ -316,10 +319,10 @@ class TradingAgentsGraph:
         ) as f:
             json.dump(self.log_states_dict, f, indent=4)
 
-    def _fetch_returns(self, ticker: str, trade_date: str):
+    def _fetch_returns(self, ticker: str, trade_date: str, holding_days: int = 5):
         """Fetch stock and benchmark returns after a trade date."""
         start = datetime.strptime(str(trade_date), "%Y-%m-%d")
-        end = start + timedelta(days=14)
+        end = start + timedelta(days=holding_days + 7)
 
         stock_history = yf.Ticker(ticker).history(
             start=start.strftime("%Y-%m-%d"),
@@ -332,11 +335,10 @@ class TradingAgentsGraph:
             auto_adjust=False,
         )
 
-        common_points = min(len(stock_history), len(benchmark_history))
-        if common_points < 2:
+        if len(stock_history) < 2 or len(benchmark_history) < 2:
             return None, None, None
 
-        end_idx = common_points - 1
+        end_idx = min(holding_days, len(stock_history) - 1, len(benchmark_history) - 1)
         stock_raw = (
             float(stock_history["Close"].iloc[end_idx]) / float(stock_history["Close"].iloc[0])
         ) - 1.0

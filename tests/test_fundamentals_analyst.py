@@ -173,6 +173,54 @@ class FundamentalsAnalystTests(unittest.TestCase):
         self.assertIn("free cash flow", result["fundamentals_report"].lower())
         self.assertEqual(result["messages"][0].content, result["fundamentals_report"])
 
+    def test_fundamentals_analyst_rewrites_false_missing_guidance_and_peer_sample(self):
+        llm = _CapturingLLM(
+            "一、核心概览与估值快照\n已覆盖资产负债表、利润表、现金流、ROE、毛利率、净利率、资产负债率、自由现金流和增长。\n\n"
+            "六、业绩预告与前瞻估值\n存在历史业绩预告，但该预告不晚于最新财报期，因此当前无法计算前瞻市盈率。\n\n"
+            "七、同业对比\n已提供同业样本，可据此比较PE、PB、ROE与净利润增速。"
+        )
+        node = create_fundamentals_analyst(llm)
+
+        partial_result = AIMessage(
+            content=(
+                "一、核心概览与估值快照\n概览。\n\n"
+                "六、业绩预告与前瞻估值\n当前数据源中暂无晚于2026年3月31日最新财报期的业绩预告数据，亦无前瞻盈利预测值。\n\n"
+                "七、同业对比\n当前数据源中未提供明确的同业样本数据。"
+            )
+        )
+        state = {
+            "company_of_interest": "300207.SZ",
+            "trade_date": "2026-04-27",
+            "messages": [
+                HumanMessage(content="请分析 300207.SZ 的财报和基本面"),
+                AIMessage(
+                    content=(
+                        "# Tushare fundamentals for 300207.SZ\n"
+                        "Latest Forecast Announcement Date: 20240716\n"
+                        "Forecast Summary: 预计:净利润76734-89888\n"
+                        "Forward PE Status: Latest available forecast is not newer than the latest reported financial period 20260331.\n"
+                        "Peer Sample Basis: same Tushare industry '电气设备'\n"
+                        "Peer Sample: 宁德时代 (300750.SZ)\n"
+                        "Target vs Peer Median: PE: target 47.30x vs sample median 37.19x\n"
+                    )
+                ),
+                AIMessage(content="# Tushare balance sheet for 300207.SZ (quarterly)\n# Key snapshot\nTotal Assets: 1155.69亿 CNY"),
+                AIMessage(content="# Tushare cashflow for 300207.SZ (quarterly)\nOperating Cash Flow: 30.0亿 CNY"),
+                AIMessage(content="# Tushare income statement for 300207.SZ (quarterly)\nTotal Revenue: 161.16亿 CNY"),
+            ],
+        }
+
+        with patch(
+            "tradingagents.agents.analysts.fundamentals_analyst.run_tool_report_chain",
+            return_value=(partial_result, partial_result.content),
+        ):
+            result = node(state)
+
+        self.assertIn("存在历史业绩预告", result["fundamentals_report"])
+        self.assertIn("已提供同业样本", result["fundamentals_report"])
+        self.assertNotIn("未提供明确的同业样本数据", result["fundamentals_report"])
+        self.assertNotIn("亦无前瞻盈利预测值", result["fundamentals_report"])
+
     def test_fundamentals_analyst_normalizes_basic_fundamentals_wording(self):
         llm = _CapturingLLM(
             "# 根本分析\n\n已覆盖资产负债表、利润表、现金流、ROE、毛利率、净利率、资产负债率、自由现金流和增长。"
@@ -250,7 +298,7 @@ class FundamentalsAnalystTests(unittest.TestCase):
         ):
             result = node(state)
 
-        self.assertIn("1. 核心概览与估值快照", result["fundamentals_report"])
+        self.assertIn("一、核心概览与估值快照", result["fundamentals_report"])
         self.assertNotIn("Fundamentals Overview and Valuation Snapshot", result["fundamentals_report"])
         self.assertNotIn("根据最新工具输出数据", result["fundamentals_report"])
         rewrite_prompt = llm.prompts[0]
