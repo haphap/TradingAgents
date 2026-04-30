@@ -3,7 +3,7 @@ from typing import Optional
 
 from .base_client import BaseLLMClient
 
-_OPENAI_COMPATIBLE_PROVIDERS = ("openai", "xai", "openrouter", "ollama", "minimax")
+_OPENAI_COMPATIBLE_PROVIDERS = ("openai", "xai", "openrouter", "ollama", "minimax", "vllm")
 
 
 def create_llm_client(
@@ -15,7 +15,7 @@ def create_llm_client(
     """Create an LLM client for the specified provider.
 
     Args:
-        provider: LLM provider (openai, anthropic, google, xai, minimax, ollama, openrouter)
+        provider: LLM provider (openai, anthropic, google, xai, minimax, ollama, openrouter, vllm)
         model: Model name/identifier
         base_url: Optional base URL for API endpoint
         **kwargs: Additional provider-specific arguments

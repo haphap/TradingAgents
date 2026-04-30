@@ -30,6 +30,7 @@ _PROVIDER_CONFIG = {
     "minimax": ("https://api.minimax.chat/v1", "MINIMAX_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
     "ollama": ("http://localhost:11434/v1", None),
+    "vllm": ("http://127.0.0.1:8000/v1", None),
 }
 
 
@@ -39,7 +40,7 @@ class OpenAIClient(BaseLLMClient):
     For native OpenAI models, uses the Responses API (/v1/responses) which
     supports reasoning_effort with function tools across all model families
     (GPT-4.1, GPT-5). Third-party compatible providers (xAI, MiniMax,
-    OpenRouter, Ollama) use standard Chat Completions.
+    OpenRouter, Ollama, vLLM) use standard Chat Completions.
     """
 
     def __init__(

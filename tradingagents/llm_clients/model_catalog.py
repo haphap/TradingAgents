@@ -88,6 +88,15 @@ MODEL_OPTIONS: ProviderModeOptions = {
         "quick": [],
         "deep": [],
     },
+    # vLLM models are served locally; any model ID is accepted by the validator.
+    "vllm": {
+        "quick": [
+            ("Carnice-V2-27b-NVFP4 (vLLM local)", "sakamakismile/Carnice-V2-27b-NVFP4-TEXT-MTP"),
+        ],
+        "deep": [
+            ("Carnice-V2-27b-NVFP4 (vLLM local)", "sakamakismile/Carnice-V2-27b-NVFP4-TEXT-MTP"),
+        ],
+    },
     "ollama": {
         "quick": [
             ("Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M (llama.cpp local)", "Jackrong/Qwopus3.5-9B-v3-GGUF:Q4_K_M"),

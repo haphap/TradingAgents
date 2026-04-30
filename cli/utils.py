@@ -226,6 +226,46 @@ def select_ollama_model(base_url: str) -> str:
     ).ask().strip()
 
 
+def _fetch_vllm_models(base_url: str) -> List[Tuple[str, str]]:
+    """Fetch available models from a vLLM server via OpenAI-compatible /v1/models."""
+    import requests
+
+    try:
+        resp = requests.get(f"{base_url}/models", timeout=5)
+        resp.raise_for_status()
+        return [(m["id"], m["id"]) for m in resp.json().get("data", [])]
+    except Exception as e:
+        console.print(f"\n[yellow]Could not fetch vLLM models from {base_url}: {e}[/yellow]")
+        return []
+
+
+def select_vllm_model(base_url: str) -> str:
+    """Select a model from a running vLLM server, or enter a custom name."""
+    models = _fetch_vllm_models(base_url)
+
+    if models:
+        choices = [questionary.Choice(mid, value=mid) for _, mid in models]
+        choices.append(questionary.Choice("Custom model name", value="custom"))
+        choice = questionary.select(
+            f"Select vLLM Model (from {base_url}):",
+            choices=choices,
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=questionary.Style([
+                ("selected", "fg:magenta noinherit"),
+                ("highlighted", "fg:magenta noinherit"),
+                ("pointer", "fg:magenta noinherit"),
+            ]),
+        ).ask()
+
+        if choice is not None and choice != "custom":
+            return choice
+
+    return questionary.text(
+        "Enter model name (e.g. qwen2.5-7b):",
+        validate=lambda x: len(x.strip()) > 0 or "Please enter a model name.",
+    ).ask().strip()
+
+
 def _prompt_custom_model_id() -> str:
     """Prompt the user to enter a provider-specific custom model ID."""
     return questionary.text(
@@ -241,6 +281,9 @@ def _select_model(provider: str, mode: str, base_url: str | None = None) -> str:
 
     if provider.lower() == "ollama" and base_url:
         return select_ollama_model(base_url)
+
+    if provider.lower() == "vllm" and base_url:
+        return select_vllm_model(base_url)
 
     choice = questionary.select(
         f"Select Your [{mode.title()}-Thinking LLM Engine]:",
@@ -290,6 +333,7 @@ def select_llm_provider() -> tuple[str, str]:
         ("MiniMax", "minimax", "https://api.minimax.chat/v1"),
         ("Openrouter", "openrouter", "https://openrouter.ai/api/v1"),
         ("Ollama / llama.cpp", "ollama", "http://localhost:4000/v1"),
+        ("vLLM", "vllm", "http://127.0.0.1:8000/v1"),
     ]
     
     choice = questionary.select(
