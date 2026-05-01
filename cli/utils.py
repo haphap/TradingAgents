@@ -333,7 +333,7 @@ def select_llm_provider() -> tuple[str, str]:
         ("MiniMax", "minimax", "https://api.minimax.chat/v1"),
         ("Openrouter", "openrouter", "https://openrouter.ai/api/v1"),
         ("Ollama / llama.cpp", "ollama", "http://localhost:4000/v1"),
-        ("vLLM", "vllm", "http://127.0.0.1:8000/v1"),
+        ("vLLM", "vllm", "http://127.0.0.1:8020/v1"),
     ]
     
     choice = questionary.select(

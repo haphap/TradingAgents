@@ -30,7 +30,7 @@ _PROVIDER_CONFIG = {
     "minimax": ("https://api.minimax.chat/v1", "MINIMAX_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
     "ollama": ("http://localhost:11434/v1", None),
-    "vllm": ("http://127.0.0.1:8000/v1", None),
+    "vllm": ("http://127.0.0.1:8020/v1", None),
 }
 
 
