@@ -353,6 +353,24 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("时间区间", formatted)
         self.assertNotIn("time horizon", formatted.lower())
 
+    def test_portfolio_manager_inserts_paragraph_break_after_rating_line(self):
+        risk_state = {
+            "aggressive_history": "",
+            "conservative_history": "",
+            "neutral_history": "",
+            "judge_decision": (
+                "## 持仓建议\n"
+                "评级: 增持\n"
+                "建议针对回踩后的确认信号分批加仓，并继续跟踪量价配合。\n\n"
+                "最终交易建议: **增持**"
+            ),
+        }
+
+        formatted = format_risk_management_history(risk_state)
+
+        self.assertIn("#### 一、持仓建议", formatted)
+        self.assertIn("评级: 增持\n\n建议针对回踩后的确认信号分批加仓", formatted)
+
     def test_message_buffer_localizes_fundamentals_section_title_in_chinese(self):
         buffer = MessageBuffer()
         buffer.init_for_analysis(["fundamentals"])

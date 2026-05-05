@@ -339,6 +339,7 @@ class OutputLanguagePropagationTests(unittest.TestCase):
         )
 
         self.assertIn("建议评级: 买入", rendered)
+        self.assertIn("建议评级: 买入\n\n等待催化确认后再分批布局。", rendered)
         self.assertNotIn("建议评级: 减持", rendered)
         self.assertIn("最终交易建议: **买入**", rendered)
         self.assertNotIn("反馈快照:\n- 立场: 减持", rendered)

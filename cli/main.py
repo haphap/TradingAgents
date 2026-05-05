@@ -24,6 +24,7 @@ from rich.tree import Tree
 from rich import box
 from rich.align import Align
 from rich.rule import Rule
+from urllib.parse import urlparse
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -51,6 +52,7 @@ app = typer.Typer(
     name="TradingAgents",
     help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
     add_completion=True,  # Enable shell completion
+    pretty_exceptions_show_locals=False,
 )
 
 
@@ -1380,6 +1382,67 @@ def process_chunk_messages(chunk, buffer: MessageBuffer) -> None:
                 else:
                     buffer.add_tool_call(tool_call.name, tool_call.args)
 
+
+def _format_provider_label(provider: str) -> str:
+    mapping = {
+        "vllm": "vLLM",
+        "ollama": "Ollama / llama.cpp",
+        "openai": "OpenAI",
+        "google": "Google",
+        "anthropic": "Anthropic",
+        "xai": "xAI",
+        "openrouter": "OpenRouter",
+        "minimax": "MiniMax",
+    }
+    return mapping.get((provider or "").lower(), provider or "LLM backend")
+
+
+def _iter_exception_chain(exc: Exception):
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        yield current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+
+
+def _is_local_backend_url(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    return (parsed.hostname or "").lower() in {"127.0.0.1", "localhost"}
+
+
+def _preflight_local_backend(provider: str, backend_url: str) -> None:
+    if not _is_local_backend_url(backend_url):
+        return
+
+    import requests
+
+    endpoint = f"{backend_url.rstrip('/')}/models"
+    try:
+        response = requests.get(endpoint, timeout=3)
+        response.raise_for_status()
+    except Exception as exc:
+        label = _format_provider_label(provider)
+        raise RuntimeError(
+            f"Cannot reach {label} backend at {backend_url}. Start the local server first, or choose a different provider."
+        ) from exc
+
+
+def _format_runtime_failure(exc: Exception, selections: dict) -> str:
+    provider_label = _format_provider_label(selections.get("llm_provider", ""))
+    backend_url = selections.get("backend_url", "")
+
+    if any("connection refused" in str(err).lower() for err in _iter_exception_chain(exc)):
+        if backend_url:
+            return f"Cannot reach {provider_label} backend at {backend_url}. Start the server first, or choose a different provider."
+        return f"Cannot reach the selected {provider_label} backend. Start the server first, or choose a different provider."
+
+    message = str(exc).strip() or exc.__class__.__name__
+    return f"Analysis failed: {message}"
+
+
 def run_analysis(checkpoint: bool = False):
     # First get all user selections
     selections = get_user_selections()
@@ -1419,6 +1482,12 @@ def run_analysis(checkpoint: bool = False):
 
     # Track start time for elapsed display
     start_time = time.time()
+
+    try:
+        _preflight_local_backend(selections["llm_provider"], selections["backend_url"])
+    except Exception as exc:
+        console.print(f"\n[red]{_format_runtime_failure(exc, selections)}[/red]")
+        raise typer.Exit(code=1)
 
     # Create result directory
     results_dir = Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
@@ -1471,6 +1540,8 @@ def run_analysis(checkpoint: bool = False):
     # Now start the display layout
     layout = create_layout()
 
+    final_state = None
+    runtime_error = None
     with Live(layout, refresh_per_second=4) as live:
         # Initial display
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
@@ -1497,139 +1568,148 @@ def run_analysis(checkpoint: bool = False):
         )
         update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
-        trace = []
-        init_agent_state, args, resumed = graph.prepare_run(
-            selections["ticker"],
-            selections["analysis_date"],
-            callbacks=[stats_handler],
-        )
-        if resumed:
-            message_buffer.add_message(
-                "System",
-                f"Resuming checkpoint for {selections['ticker']} on {selections['analysis_date']}",
-            )
-            update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-        completed_successfully = False
         try:
-            for chunk in graph.graph.stream(init_agent_state, **args):
-                # Process all messages in each chunk so intermediate tool calls are not dropped.
-                process_chunk_messages(chunk, message_buffer)
-
-                # Update analyst statuses based on report state (runs on every chunk)
-                update_analyst_statuses(message_buffer, chunk)
-
-                # Research Team - Handle Investment Debate State
-                if chunk.get("investment_debate_state"):
-                    debate_state = chunk["investment_debate_state"]
-                    bull_hist = debate_state.get("bull_history", "").strip()
-                    bear_hist = debate_state.get("bear_history", "").strip()
-                    judge = debate_state.get("judge_decision", "").strip()
-                    formatted_research = format_research_team_history(debate_state)
-
-                    # Only update status when there's actual content
-                    if bull_hist or bear_hist:
-                        update_research_team_status("in_progress")
-                    if formatted_research:
-                        message_buffer.update_report_section(
-                            "investment_plan", formatted_research
-                        )
-                    if judge:
-                        update_research_team_status("completed")
-                        message_buffer.update_agent_status("Trader", "in_progress")
-
-                # Trading Team
-                if chunk.get("trader_investment_plan"):
-                    message_buffer.update_report_section(
-                        "trader_investment_plan", chunk["trader_investment_plan"]
-                    )
-                    if message_buffer.agent_status.get("Trader") != "completed":
-                        message_buffer.update_agent_status("Trader", "completed")
-                        message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-
-                # Risk Management Team - Handle Risk Debate State
-                if chunk.get("risk_debate_state"):
-                    risk_state = chunk["risk_debate_state"]
-                    agg_hist = risk_state.get("aggressive_history", "").strip()
-                    con_hist = risk_state.get("conservative_history", "").strip()
-                    neu_hist = risk_state.get("neutral_history", "").strip()
-                    judge = risk_state.get("judge_decision", "").strip()
-                    formatted_risk = format_risk_management_history(
-                        risk_state, include_manager=False
-                    )
-                    formatted_portfolio = (
-                        _format_manager_decision(
-                            judge,
-                            risk_state.get("judge_snapshot_path", ""),
-                            show_snapshot_summary=False,
-                        )
-                        if judge
-                        else ""
-                    )
-
-                    if agg_hist:
-                        if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
-                            message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-                    if con_hist:
-                        if message_buffer.agent_status.get("Conservative Analyst") != "completed":
-                            message_buffer.update_agent_status("Conservative Analyst", "in_progress")
-                    if neu_hist:
-                        if message_buffer.agent_status.get("Neutral Analyst") != "completed":
-                            message_buffer.update_agent_status("Neutral Analyst", "in_progress")
-                    if formatted_portfolio:
-                        message_buffer.update_report_section(
-                            "final_trade_decision", formatted_portfolio
-                        )
-                    if judge:
-                        if message_buffer.agent_status.get("Portfolio Manager") != "completed":
-                            message_buffer.update_agent_status("Portfolio Manager", "in_progress")
-                            message_buffer.update_agent_status("Aggressive Analyst", "completed")
-                            message_buffer.update_agent_status("Conservative Analyst", "completed")
-                            message_buffer.update_agent_status("Neutral Analyst", "completed")
-                            message_buffer.update_agent_status("Portfolio Manager", "completed")
-
-                # Update the display
+            trace = []
+            init_agent_state, args, resumed = graph.prepare_run(
+                selections["ticker"],
+                selections["analysis_date"],
+                callbacks=[stats_handler],
+            )
+            if resumed:
+                message_buffer.add_message(
+                    "System",
+                    f"Resuming checkpoint for {selections['ticker']} on {selections['analysis_date']}",
+                )
                 update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-                trace.append(chunk)
-            completed_successfully = True
-        finally:
-            if completed_successfully and trace:
-                graph.finalize_run(selections["analysis_date"], trace[-1])
-            graph.close_run()
+            completed_successfully = False
+            try:
+                for chunk in graph.graph.stream(init_agent_state, **args):
+                    # Process all messages in each chunk so intermediate tool calls are not dropped.
+                    process_chunk_messages(chunk, message_buffer)
 
-        # Get final state and decision
-        final_state = trace[-1]
-        decision = graph.process_signal(final_state["final_trade_decision"])
+                    # Update analyst statuses based on report state (runs on every chunk)
+                    update_analyst_statuses(message_buffer, chunk)
 
-        # Update all agent statuses to completed
-        for agent in message_buffer.agent_status:
-            message_buffer.update_agent_status(agent, "completed")
+                    # Research Team - Handle Investment Debate State
+                    if chunk.get("investment_debate_state"):
+                        debate_state = chunk["investment_debate_state"]
+                        bull_hist = debate_state.get("bull_history", "").strip()
+                        bear_hist = debate_state.get("bear_history", "").strip()
+                        judge = debate_state.get("judge_decision", "").strip()
+                        formatted_research = format_research_team_history(debate_state)
 
-        message_buffer.add_message(
-            "System", f"Completed analysis for {selections['analysis_date']}"
-        )
+                        # Only update status when there's actual content
+                        if bull_hist or bear_hist:
+                            update_research_team_status("in_progress")
+                        if formatted_research:
+                            message_buffer.update_report_section(
+                                "investment_plan", formatted_research
+                            )
+                        if judge:
+                            update_research_team_status("completed")
+                            message_buffer.update_agent_status("Trader", "in_progress")
 
-        # Update final report sections
-        for section in message_buffer.report_sections.keys():
-            if section == "investment_plan" and final_state.get("investment_debate_state"):
-                message_buffer.update_report_section(
-                    section,
-                    format_research_team_history(final_state["investment_debate_state"]),
-                )
-            elif section == "final_trade_decision" and final_state.get("risk_debate_state"):
-                message_buffer.update_report_section(
-                    section,
-                    _format_manager_decision(
-                        final_state["final_trade_decision"],
-                        final_state["risk_debate_state"].get("judge_snapshot_path", ""),
-                        show_snapshot_summary=False,
-                    ),
-                )
-            elif section in final_state:
-                message_buffer.update_report_section(section, final_state[section])
+                    # Trading Team
+                    if chunk.get("trader_investment_plan"):
+                        message_buffer.update_report_section(
+                            "trader_investment_plan", chunk["trader_investment_plan"]
+                        )
+                        if message_buffer.agent_status.get("Trader") != "completed":
+                            message_buffer.update_agent_status("Trader", "completed")
+                            message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
 
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
+                    # Risk Management Team - Handle Risk Debate State
+                    if chunk.get("risk_debate_state"):
+                        risk_state = chunk["risk_debate_state"]
+                        agg_hist = risk_state.get("aggressive_history", "").strip()
+                        con_hist = risk_state.get("conservative_history", "").strip()
+                        neu_hist = risk_state.get("neutral_history", "").strip()
+                        judge = risk_state.get("judge_decision", "").strip()
+                        formatted_risk = format_risk_management_history(
+                            risk_state, include_manager=False
+                        )
+                        formatted_portfolio = (
+                            _format_manager_decision(
+                                judge,
+                                risk_state.get("judge_snapshot_path", ""),
+                                show_snapshot_summary=False,
+                            )
+                            if judge
+                            else ""
+                        )
+
+                        if agg_hist:
+                            if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
+                                message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
+                        if con_hist:
+                            if message_buffer.agent_status.get("Conservative Analyst") != "completed":
+                                message_buffer.update_agent_status("Conservative Analyst", "in_progress")
+                        if neu_hist:
+                            if message_buffer.agent_status.get("Neutral Analyst") != "completed":
+                                message_buffer.update_agent_status("Neutral Analyst", "in_progress")
+                        if formatted_portfolio:
+                            message_buffer.update_report_section(
+                                "final_trade_decision", formatted_portfolio
+                            )
+                        if judge:
+                            if message_buffer.agent_status.get("Portfolio Manager") != "completed":
+                                message_buffer.update_agent_status("Portfolio Manager", "in_progress")
+                                message_buffer.update_agent_status("Aggressive Analyst", "completed")
+                                message_buffer.update_agent_status("Conservative Analyst", "completed")
+                                message_buffer.update_agent_status("Neutral Analyst", "completed")
+                                message_buffer.update_agent_status("Portfolio Manager", "completed")
+
+                    # Update the display
+                    update_display(layout, stats_handler=stats_handler, start_time=start_time)
+
+                    trace.append(chunk)
+                completed_successfully = True
+            finally:
+                if completed_successfully and trace:
+                    graph.finalize_run(selections["analysis_date"], trace[-1])
+                graph.close_run()
+
+            # Get final state and decision
+            final_state = trace[-1]
+            decision = graph.process_signal(final_state["final_trade_decision"])
+
+            # Update all agent statuses to completed
+            for agent in message_buffer.agent_status:
+                message_buffer.update_agent_status(agent, "completed")
+
+            message_buffer.add_message(
+                "System", f"Completed analysis for {selections['analysis_date']}"
+            )
+
+            # Update final report sections
+            for section in message_buffer.report_sections.keys():
+                if section == "investment_plan" and final_state.get("investment_debate_state"):
+                    message_buffer.update_report_section(
+                        section,
+                        format_research_team_history(final_state["investment_debate_state"]),
+                    )
+                elif section == "final_trade_decision" and final_state.get("risk_debate_state"):
+                    message_buffer.update_report_section(
+                        section,
+                        _format_manager_decision(
+                            final_state["final_trade_decision"],
+                            final_state["risk_debate_state"].get("judge_snapshot_path", ""),
+                            show_snapshot_summary=False,
+                        ),
+                    )
+                elif section in final_state:
+                    message_buffer.update_report_section(section, final_state[section])
+
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
+        except Exception as exc:
+            runtime_error = exc
+            message_buffer.add_message("System", _format_runtime_failure(exc, selections))
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
+
+    if runtime_error is not None:
+        console.print(f"\n[red]{_format_runtime_failure(runtime_error, selections)}[/red]")
+        raise typer.Exit(code=1)
 
     # Post-analysis prompts (outside Live context for clean interaction)
     console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")

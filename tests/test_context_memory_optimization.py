@@ -9,6 +9,7 @@ from tradingagents.agents.utils.agent_utils import (
     extract_feedback_snapshot,
     get_snapshot_template,
     make_display_snapshot,
+    normalize_chinese_numeric_expressions,
     normalize_chinese_role_terms,
     normalize_display_numbering,
     strip_analyst_decision_summary,
@@ -56,6 +57,76 @@ class ContextMemoryOptimizationTests(unittest.TestCase):
         self.assertIn("单季度业绩", normalized)
         self.assertIn("规模扩张能力", normalized)
         self.assertIn("全轮次辩论", normalized)
+
+    def test_normalize_chinese_role_terms_localizes_raw_indicator_keys(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        text = "close_10_ema、close_50_sma、boll_ub、boll_lb、macds、macdh、vwma 都需要转成可读标签。"
+        normalized = normalize_chinese_role_terms(text)
+
+        self.assertIn("10日EMA", normalized)
+        self.assertIn("50日SMA", normalized)
+        self.assertIn("布林带上轨", normalized)
+        self.assertIn("布林带下轨", normalized)
+        self.assertIn("MACD信号线", normalized)
+        self.assertIn("MACD柱状图", normalized)
+        self.assertIn("成交量加权移动平均线", normalized)
+        self.assertNotIn("close_10_ema", normalized)
+
+    def test_normalize_chinese_numeric_expressions_handles_approximate_values(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        text = "四百余万元合同负债、十余天账期、近三个月营收改善、约四百万元销售额。"
+        normalized = normalize_chinese_numeric_expressions(text)
+
+        self.assertEqual(normalized, text)
+
+    def test_normalize_chinese_role_terms_does_not_corrupt_approximate_large_units(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        normalized = normalize_chinese_role_terms("公司仍有四百余万元合同负债。")
+
+        self.assertIn("四百余万元合同负债", normalized)
+        self.assertNotIn("余0元", normalized)
+        self.assertNotIn("400余万元", normalized)
+
+    def test_normalize_chinese_numeric_expressions_handles_composite_large_units(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        normalized = normalize_chinese_numeric_expressions("合同金额一亿零三万元，签约额约一亿零三万元。")
+
+        self.assertEqual(normalized, "合同金额10003万元，签约额约一亿零三万元。")
+
+    def test_normalize_chinese_numeric_expressions_rescales_large_arabic_currency_amounts(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        normalized = normalize_chinese_numeric_expressions(
+            "公司拥有超300000000000元现金储备与充沛的经营现金流。"
+        )
+
+        self.assertEqual(normalized, "公司拥有超3000亿元现金储备与充沛的经营现金流。")
+
+    def test_normalize_chinese_role_terms_normalizes_ticker_codes_and_dates(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["output_language"] = "Chinese"
+        set_config(cfg)
+
+        normalized = normalize_chinese_role_terms(
+            "对三零零七五零点SZ（宁德时代）的判断转弱，观察区间为二〇二六年五月一日至二〇二六年六月三十日。"
+        )
+
+        self.assertIn("300750.SZ（宁德时代）", normalized)
+        self.assertIn("2026年5月1日至2026年6月30日", normalized)
 
     def test_feedback_snapshot_helpers(self):
         response = (

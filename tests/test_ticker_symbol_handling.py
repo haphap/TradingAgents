@@ -12,6 +12,7 @@ class TickerSymbolHandlingTests(unittest.TestCase):
         context = build_instrument_context("7203.T")
         self.assertIn("7203.T", context)
         self.assertIn("exchange suffix", context)
+        self.assertIn("Never spell ticker digits in Chinese", context)
 
 
 if __name__ == "__main__":

@@ -586,7 +586,7 @@ def render_portfolio_decision(plan: PortfolioDecision) -> str:
         f"## {localize_label('Action Logic', '行为逻辑')}\n"
         f"{action_logic}\n\n"
         f"## {localize_label('Positioning Recommendation', '持仓建议')}\n"
-        f"{localize_label('Recommendation', '建议评级')}: {recommendation}\n"
+        f"{localize_label('Recommendation', '建议评级')}: {recommendation}\n\n"
         f"{positioning_recommendation}\n\n"
         f"{final_line}"
     )

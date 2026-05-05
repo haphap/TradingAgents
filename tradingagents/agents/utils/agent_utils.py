@@ -1,5 +1,6 @@
 from langchain_core.messages import HumanMessage, RemoveMessage
 from difflib import SequenceMatcher
+from decimal import Decimal, InvalidOperation
 import os
 import re
 
@@ -41,6 +42,17 @@ def get_language_instruction() -> str:
         f" Write your entire response in {lang}."
         " Translate mixed English finance terms into Chinese as well, including items such as"
         " Capex, Forward PE, quarterly earnings, and scalability."
+        " Follow Chinese publishing number style: use Arabic numerals for dates, times,"
+        " percentages, prices, quantities, ticker symbols, securities codes, model numbers,"
+        " and other codes/serial numbers; keep approximate expressions such as"
+        " '三四个月', '十余次', '一千多件', and '约三千名' in Chinese unless a local"
+        " statistical comparison clearly requires Arabic numerals. For very large currency"
+        " figures written in Arabic numerals, rescale raw `元/美元/港元` amounts into"
+        " `万` or `亿` units when that produces a clean, publication-style expression"
+        " (e.g. `300000000000元` -> `3000亿元`). In visible Chinese prose, replace raw"
+        " technical-indicator parameter keys such as `close_10_ema`, `boll_ub`, and"
+        " `vwma` with reader-friendly labels such as `10日EMA`, `布林带上轨`, and"
+        " `成交量加权移动平均线`."
     )
 
 
@@ -248,6 +260,12 @@ _CHINESE_SMALL_UNITS = {"十": 10, "百": 100, "千": 1000}
 _CHINESE_LARGE_UNITS = {"万": 10_000, "亿": 100_000_000}
 _CHINESE_NUMERIC_TOKEN_RE = r"[负零〇○一二两三四五六七八九十百千万亿点]+"
 _CHINESE_BASE_NUMERIC_TOKEN_RE = r"[负零〇○一二两三四五六七八九十百点]+"
+_CHINESE_DIGIT_SEQUENCE_RE = r"[零〇○一二两三四五六七八九]{2,}"
+_CHINESE_COMPOSITE_CURRENCY_TOKEN_RE = (
+    r"[负零〇○一二两三四五六七八九十百千点]+亿(?:零?[负零〇○一二两三四五六七八九十百千点]+)?万"
+)
+_CHINESE_APPROX_PREFIX_RE = r"(?:近|约|大约|约莫|将近|接近|不到|不足|超|超过|逾|至少)"
+_CHINESE_APPROX_SUFFIX_RE = r"(?:余|多|几|来)"
 _NUMERIC_UNIT_OPTIONS = tuple(
     sorted(
         {
@@ -378,50 +396,271 @@ def _convert_chinese_numeric_token(token: str) -> str:
     return f"{sign}{_chinese_integer_to_int(token)}"
 
 
-def normalize_chinese_numeric_expressions(text: str) -> str:
-    """Convert precise Chinese numeric expressions to Arabic numerals in visible Chinese output."""
+def _convert_chinese_digit_sequence(token: str) -> str | None:
+    token = (token or "").strip()
+    if not token:
+        return None
+
+    normalized = token.replace("两", "二").replace("〇", "零").replace("○", "零")
+    if not re.fullmatch(_CHINESE_DIGIT_SEQUENCE_RE, normalized):
+        return None
+    return "".join(str(_CHINESE_DIGIT_VALUES[ch]) for ch in normalized)
+
+
+def _safe_convert_chinese_numeric_token(token: str) -> str | None:
+    token = (token or "").strip()
+    if not token:
+        return None
+
+    normalized = token.replace("两", "二").replace("〇", "零").replace("○", "零")
+    if re.fullmatch(_CHINESE_DIGIT_SEQUENCE_RE, normalized):
+        return None
+    if re.fullmatch(r"负?[万亿]+", normalized):
+        return None
+
+    converted = _convert_chinese_numeric_token(token)
+    if converted in {"0", "-0"} and not re.fullmatch(r"负?[零]+", normalized):
+        return None
+    return converted
+
+
+def _protect_chinese_approximate_expressions(text: str) -> tuple[str, list[str]]:
+    protected: list[str] = []
+
+    def _stash(match: re.Match[str]) -> str:
+        protected.append(match.group(0))
+        return f"__CN_APPROX_{len(protected) - 1}__"
+
+    protected_text = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})({_CHINESE_APPROX_SUFFIX_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
+        _stash,
+        text,
+    )
+    protected_text = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_APPROX_PREFIX_RE})({_CHINESE_NUMERIC_TOKEN_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
+        _stash,
+        protected_text,
+    )
+    return protected_text, protected
+
+
+def _restore_chinese_approximate_expressions(text: str, protected: list[str]) -> str:
+    restored = text
+    for index, original in enumerate(protected):
+        restored = restored.replace(f"__CN_APPROX_{index}__", original)
+    return restored
+
+
+def normalize_chinese_identifier_codes(text: str) -> str:
+    """Normalize Chinese-spelled codes and digit-by-digit years to Arabic forms."""
     if not text or not _is_chinese_output():
         return text or ""
 
     normalized = text
 
     normalized = re.sub(
+        rf"(?<![A-Za-z0-9])({_CHINESE_DIGIT_SEQUENCE_RE})\s*(?:点|\.|．)\s*([A-Za-z]{{1,5}})(?![A-Za-z])",
+        lambda match: (
+            f"{converted}.{match.group(2).upper()}"
+            if (converted := _convert_chinese_digit_sequence(match.group(1)))
+            else match.group(0)
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"((?:证券代码|股票代码|代码|代号)\s*(?:为|是)?\s*[:：]?\s*)({_CHINESE_DIGIT_SEQUENCE_RE})(?![A-Za-z0-9])",
+        lambda match: (
+            f"{match.group(1)}{converted}"
+            if (converted := _convert_chinese_digit_sequence(match.group(2)))
+            else match.group(0)
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![0-9])({_CHINESE_DIGIT_SEQUENCE_RE})年({_CHINESE_NUMERIC_TOKEN_RE})月({_CHINESE_NUMERIC_TOKEN_RE})日",
+        lambda match: (
+            f"{year}年{month}月{day}日"
+            if (
+                (year := _convert_chinese_digit_sequence(match.group(1))) is not None
+                and (month := _convert_chinese_numeric_token(match.group(2)))
+                and (day := _convert_chinese_numeric_token(match.group(3)))
+            )
+            else match.group(0)
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![0-9])({_CHINESE_DIGIT_SEQUENCE_RE})年({_CHINESE_NUMERIC_TOKEN_RE})月",
+        lambda match: (
+            f"{year}年{month}月"
+            if (
+                (year := _convert_chinese_digit_sequence(match.group(1))) is not None
+                and (month := _convert_chinese_numeric_token(match.group(2)))
+            )
+            else match.group(0)
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![0-9])({_CHINESE_DIGIT_SEQUENCE_RE})年",
+        lambda match: (
+            f"{year}年"
+            if (year := _convert_chinese_digit_sequence(match.group(1))) is not None
+            else match.group(0)
+        ),
+        normalized,
+    )
+    return normalized
+
+
+def _format_decimal_plain(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def _decimal_places(value: Decimal) -> int:
+    normalized = value.normalize()
+    exponent = normalized.as_tuple().exponent
+    return -exponent if exponent < 0 else 0
+
+
+def _normalize_large_arabic_currency_units(text: str) -> str:
+    if not text:
+        return ""
+
+    unit_map = {
+        "元": ("亿元", "万元"),
+        "美元": ("亿美元", "万美元"),
+        "港元": ("亿港元", "万港元"),
+    }
+
+    def _rewrite(match: re.Match[str]) -> str:
+        prefix = match.group(1) or ""
+        amount_text = match.group(2)
+        currency = match.group(3)
+        suffix = match.group(4) or ""
+
+        try:
+            amount = Decimal(amount_text.replace(",", ""))
+        except InvalidOperation:
+            return match.group(0)
+
+        abs_amount = abs(amount)
+        high_unit, low_unit = unit_map[currency]
+
+        if abs_amount >= Decimal("100000000"):
+            high_value = amount / Decimal("100000000")
+            if _decimal_places(high_value) <= 2:
+                return f"{prefix}{_format_decimal_plain(high_value)}{high_unit}{suffix}"
+
+        if abs_amount >= Decimal("10000"):
+            low_value = amount / Decimal("10000")
+            if _decimal_places(low_value) <= 2:
+                return f"{prefix}{_format_decimal_plain(low_value)}{low_unit}{suffix}"
+
+        return match.group(0)
+
+    return re.sub(
+        rf"(?<![0-9A-Za-z.])({_CHINESE_APPROX_PREFIX_RE})?(-?\d{{5,}}(?:\.\d+)?)(元|美元|港元)(以上|以下|以内|以外|左右|上下)?",
+        _rewrite,
+        text,
+    )
+
+
+def normalize_chinese_numeric_expressions(text: str) -> str:
+    """Normalize visible Chinese numerals per publishing conventions."""
+    if not text or not _is_chinese_output():
+        return text or ""
+
+    normalized = normalize_chinese_identifier_codes(text)
+    normalized, protected = _protect_chinese_approximate_expressions(normalized)
+    normalized = re.sub(
         rf"百分之({_CHINESE_NUMERIC_TOKEN_RE})(?:至|到|—|－|-|~|～)百分之({_CHINESE_NUMERIC_TOKEN_RE})(以上|以下|以内|以外|左右|上下)?",
         lambda match: (
-            f"{_convert_chinese_numeric_token(match.group(1))}%—{_convert_chinese_numeric_token(match.group(2))}%"
-            f"{match.group(3) or ''}"
+            (
+                f"{start}%—{end}%{match.group(3) or ''}"
+                if (
+                    (start := _safe_convert_chinese_numeric_token(match.group(1))) is not None
+                    and (end := _safe_convert_chinese_numeric_token(match.group(2))) is not None
+                )
+                else match.group(0)
+            )
         ),
         normalized,
     )
     normalized = re.sub(
         rf"百分之({_CHINESE_NUMERIC_TOKEN_RE})(以上|以下|以内|以外|左右|上下)?",
-        lambda match: f"{_convert_chinese_numeric_token(match.group(1))}%{match.group(2) or ''}",
+        lambda match: (
+            (
+                f"{converted}%{match.group(2) or ''}"
+                if (converted := _safe_convert_chinese_numeric_token(match.group(1)))
+                else match.group(0)
+            )
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_COMPOSITE_CURRENCY_TOKEN_RE})(美元|港元|元)(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            (
+                f"{converted}{match.group(2)}{match.group(3) or ''}"
+                if (converted := _safe_convert_chinese_numeric_token(match.group(1)))
+                else match.group(0)
+            )
+        ),
         normalized,
     )
     normalized = re.sub(
         rf"(?<![第0-9.])({_CHINESE_BASE_NUMERIC_TOKEN_RE})(亿|万)(美元|港元|元)(以上|以下|以内|以外|左右|上下)?",
         lambda match: (
-            f"{_convert_chinese_numeric_token(match.group(1))}{match.group(2)}{match.group(3)}{match.group(4) or ''}"
+            (
+                f"{converted}{match.group(2)}{match.group(3)}{match.group(4) or ''}"
+                if (converted := _safe_convert_chinese_numeric_token(match.group(1)))
+                else match.group(0)
+            )
+        ),
+        normalized,
+    )
+    normalized = re.sub(
+        rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})(美元|港元|元)(以上|以下|以内|以外|左右|上下)?",
+        lambda match: (
+            (
+                f"{converted}{match.group(2)}{match.group(3) or ''}"
+                if (converted := _safe_convert_chinese_numeric_token(match.group(1)))
+                else match.group(0)
+            )
         ),
         normalized,
     )
     normalized = re.sub(
         rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})(?:至|到|—|－|-|~|～)({_CHINESE_NUMERIC_TOKEN_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
         lambda match: (
-            f"{_convert_chinese_numeric_token(match.group(1))}—{_convert_chinese_numeric_token(match.group(2))}"
-            f"{match.group(3)}{match.group(4) or ''}"
+            (
+                f"{start}—{end}{match.group(3)}{match.group(4) or ''}"
+                if (
+                    (start := _safe_convert_chinese_numeric_token(match.group(1))) is not None
+                    and (end := _safe_convert_chinese_numeric_token(match.group(2))) is not None
+                )
+                else match.group(0)
+            )
         ),
         normalized,
     )
     normalized = re.sub(
         rf"(?<![第0-9.])({_CHINESE_NUMERIC_TOKEN_RE})({_NUMERIC_UNIT_RE})(以上|以下|以内|以外|左右|上下)?",
         lambda match: (
-            f"{_convert_chinese_numeric_token(match.group(1))}{match.group(2)}{match.group(3) or ''}"
+            (
+                f"{converted}{match.group(2)}{match.group(3) or ''}"
+                if (converted := _safe_convert_chinese_numeric_token(match.group(1)))
+                else match.group(0)
+            )
         ),
         normalized,
     )
-
-    return normalized
+    normalized = _restore_chinese_approximate_expressions(normalized, protected)
+    return _normalize_large_arabic_currency_units(normalized)
 
 
 def normalize_chinese_finance_terms(text: str) -> str:
@@ -459,6 +698,17 @@ def normalize_chinese_finance_terms(text: str) -> str:
         (r"\bcapex\b", "资本开支"),
         (r"\bScalability\b", "规模扩张能力"),
         (r"\bscalability\b", "规模扩张能力"),
+        (r"\bclose_10_ema\b", "10日EMA"),
+        (r"\bclose_50_sma\b", "50日SMA"),
+        (r"\bclose_200_sma\b", "200日SMA"),
+        (r"\bboll_ub\b", "布林带上轨"),
+        (r"\bboll_lb\b", "布林带下轨"),
+        (r"\bboll\b", "布林带中轨"),
+        (r"\bmacds\b", "MACD信号线"),
+        (r"\bmacdh\b", "MACD柱状图"),
+        (r"\bmacd\b", "MACD"),
+        (r"\batr\b", "ATR波动率"),
+        (r"\bvwma\b", "成交量加权移动平均线"),
         (r"\bForward\b", "前瞻"),
         (r"\bforward\b", "前瞻"),
         (r"\bquarterly\b", "季度"),
@@ -1870,6 +2120,11 @@ def normalize_chinese_manager_terms(text: str) -> str:
         .replace("本轮双方", "整场辩论双方")
         .replace("本轮辩论", "整场辩论")
     )
+    body = re.sub(
+        r"(?m)^((?:建议评级|评级|Recommendation|Rating)[:：][^\n]+)\n(?!\n|[#>*-]|\d+\.\s|最终交易建议|FINAL TRANSACTION PROPOSAL)(\S)",
+        r"\1\n\n\2",
+        body,
+    )
     body = normalize_chinese_finance_terms(normalize_display_numbering(body)).strip()
     if snapshot:
         return f"{body}\n\n{snapshot}".strip()
@@ -1993,7 +2248,8 @@ def build_instrument_context(ticker: str) -> str:
     return (
         f"The instrument to analyze is `{ticker}`{name_clause}. "
         "Use this exact ticker in every tool call, report, and recommendation, "
-        "preserving any exchange suffix (e.g. `.TO`, `.L`, `.HK`, `.T`)."
+        "preserving any exchange suffix (e.g. `.TO`, `.L`, `.HK`, `.T`). "
+        "Never spell ticker digits in Chinese and never replace `.` with `点`."
     )
 
 def create_msg_delete():
