@@ -27,6 +27,8 @@ def _base_state():
         "sentiment_report": "Sentiment report.",
         "news_report": "News report.",
         "fundamentals_report": "Fundamentals report.",
+        "research_report": "",
+        "stock_report": "",
         "investment_plan": "Research plan.",
         "trader_investment_plan": "Trader plan.",
         "investment_debate_state": {

@@ -380,6 +380,14 @@ class CliRoundFormattingTests(unittest.TestCase):
         self.assertIn("### 基本面分析\n财务质量稳健。", buffer.final_report)
         self.assertNotIn("根本分析", buffer.final_report)
 
+    def test_message_buffer_counts_industry_research_report_after_industry_analyst_completes(self):
+        buffer = MessageBuffer()
+        buffer.init_for_analysis(["broker_research"])
+        buffer.update_report_section("research_report", "行业研报交叉分析内容。")
+        buffer.update_agent_status("Industry Research Analyst", "completed")
+
+        self.assertEqual(1, buffer.get_completed_reports_count())
+
     def test_process_chunk_messages_records_all_unique_messages_and_tool_calls(self):
         class FakeMessage:
             def __init__(self, message_id, content, tool_calls=None):
@@ -411,6 +419,8 @@ class CliRoundFormattingTests(unittest.TestCase):
             "sentiment_report": "情绪分析内容",
             "news_report": "新闻分析内容",
             "fundamentals_report": "基本面分析内容",
+            "research_report": "",
+            "stock_report": "",
             "investment_debate_state": {
                 "bull_history": "多头分析师: 多头观点",
                 "bear_history": "空头分析师: 空头观点",

@@ -15,6 +15,7 @@ from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import TradingMemoryLog
 from tradingagents.dataflows.config import set_config
+from tradingagents.dataflows.interface import is_a_share_ticker
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
@@ -26,7 +27,9 @@ from tradingagents.agents.utils.agent_utils import (
     get_income_statement,
     get_news,
     get_insider_transactions,
-    get_global_news
+    get_global_news,
+    get_broker_research,
+    get_stock_research,
 )
 
 from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
@@ -42,9 +45,11 @@ logger = logging.getLogger(__name__)
 class TradingAgentsGraph:
     """Main class that orchestrates the trading agents framework."""
 
+    A_SHARE_ONLY_ANALYSTS = ("broker_research", "stock_research")
+
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals", "broker_research", "stock_research"],
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
@@ -60,6 +65,8 @@ class TradingAgentsGraph:
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+        self.requested_analysts = list(selected_analysts)
+        self.selected_analysts = list(selected_analysts)
 
         # Update the interface's config
         set_config(self.config)
@@ -120,9 +127,28 @@ class TradingAgentsGraph:
         self.log_states_dict = {}  # date to full state dict
 
         # Set up the graph
-        self.workflow = self.graph_setup.setup_graph(selected_analysts)
+        self.workflow = self.graph_setup.setup_graph(self.selected_analysts)
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
+
+    @classmethod
+    def resolve_selected_analysts(
+        cls,
+        selected_analysts: list[str],
+        ticker: str,
+    ) -> tuple[list[str], list[str]]:
+        ordered = list(dict.fromkeys(selected_analysts))
+        if not ticker or is_a_share_ticker(ticker):
+            return ordered, []
+
+        compatible: list[str] = []
+        skipped: list[str] = []
+        for analyst in ordered:
+            if analyst in cls.A_SHARE_ONLY_ANALYSTS:
+                skipped.append(analyst)
+            else:
+                compatible.append(analyst)
+        return compatible, skipped
 
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
@@ -180,6 +206,18 @@ class TradingAgentsGraph:
                     get_income_statement,
                 ]
             ),
+            "broker_research": ToolNode(
+                [
+                    # Broker research report tools
+                    get_broker_research,
+                ]
+            ),
+            "stock_research": ToolNode(
+                [
+                    # Individual stock research report tools
+                    get_stock_research,
+                ]
+            ),
         }
 
     def propagate(self, company_name, trade_date):
@@ -214,6 +252,25 @@ class TradingAgentsGraph:
         self.ticker = company_name
         trade_date_str = str(trade_date)
         resumed = False
+        resolved_analysts, skipped_analysts = self.resolve_selected_analysts(
+            self.requested_analysts,
+            company_name,
+        )
+        if not resolved_analysts:
+            raise ValueError(
+                f"No compatible analysts selected for '{company_name}'. "
+                "Industry Research Analyst and Stock Research Analyst are available for A-share tickers only."
+            )
+        if resolved_analysts != self.selected_analysts:
+            if skipped_analysts:
+                logger.info(
+                    "Skipping A-share-only analysts for %s: %s",
+                    company_name,
+                    ", ".join(skipped_analysts),
+                )
+            self.selected_analysts = resolved_analysts
+            self.workflow = self.graph_setup.setup_graph(self.selected_analysts)
+            self.graph = self.workflow.compile()
         self._resolve_pending_entries(company_name)
 
         if self.config.get("checkpoint_enabled"):

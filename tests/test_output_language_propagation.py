@@ -121,6 +121,8 @@ class OutputLanguagePropagationTests(unittest.TestCase):
             "sentiment_report": "Sentiment report",
             "news_report": "News report",
             "fundamentals_report": "Fundamentals report",
+            "research_report": "",
+            "stock_report": "",
             "trader_investment_plan": "Trader plan",
             "risk_debate_state": {
                 "history": "",

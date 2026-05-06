@@ -27,18 +27,38 @@ def _is_chinese_output() -> bool:
 
 def _portfolio_action_logic_instruction() -> str:
     if _is_chinese_output():
-        return "- 说明估值、催化节奏、下行边界、仓位大小以及加仓 / 减仓 / 对冲触发条件如何共同导向你的决策。"
-    return "- Explain how valuation, catalyst timing, downside boundary, position sizing, and add / reduce / hedge triggers lead to your decision."
+        return (
+            "- 说明估值、催化节奏、下行边界、仓位大小以及加仓 / 减仓 / 对冲触发条件如何共同导向你的决策。"
+            ' 每个触发条件必须给出具体数值或可验证标准，不能只写\u201c等待确认\u201d\u201c观察成交量\u201d这类泛化表述。'
+        )
+    return (
+        "- Explain how valuation, catalyst timing, downside boundary, position sizing, and add / reduce / hedge triggers lead to your decision."
+        " Every trigger condition must cite a specific number or verifiable criterion — do not use vague phrases like 'wait for confirmation' or 'watch volume'."
+    )
 
 
 def _portfolio_detail_instruction(section: str) -> str:
     if _is_chinese_output():
         if section == "conclusion":
             return "- 这一部分必须写成连贯分析段落，至少 4 句，不能只写简短观点或要点摘录。"
-        return "- 这一部分必须写成详细推理段落，至少 4 句，要把估值、催化节奏、仓位大小以及对冲 / 减仓触发条件串成完整逻辑链。"
+        return (
+            "- 这一部分必须写成详细推理段落，至少 4 句，要把估值、催化节奏、仓位大小以及对冲 / 减仓触发条件串成完整逻辑链。"
+            " 对于执行计划和风险控制，必须给出以下具体标准：\n"
+            "  (a) 关键支撑和阻力位的具体价格或均线位置（引用市场报告中的技术指标，如50日均线、布林中轨、前低或密集成交区）；\n"
+            '  (b) 成交量改善的具体阈值（相对近5日或20日均量达到什么倍数，如\u201c成交量需达到近20日均量的1.3倍以上\u201d）；\n'
+            "  (c) 盈利验证的具体指标（如毛利率需维持在多少以上、订单增速需达到多少、ROE需高于多少）；\n"
+            '  (d) 催化确认的具体条件（如\u201c需看到季度订单增速环比提升5个百分点以上\u201d或\u201c需看到行业政策落地\u201d）。'
+        )
     if section == "conclusion":
         return "- Write this section as a coherent analysis paragraph with at least 4 full sentences; do not output terse fragments or simple bullet-style restatements."
-    return "- Write this section as a detailed reasoning paragraph with at least 4 full sentences, explicitly connecting valuation, catalyst timing, position sizing, and hedge / reduce triggers to the recommendation."
+    return (
+        "- Write this section as a detailed reasoning paragraph with at least 4 full sentences, explicitly connecting valuation, catalyst timing, position sizing, and hedge / reduce triggers to the recommendation."
+        " For execution plan and risk controls, you MUST provide these specific criteria:\n"
+        "  (a) Specific price levels or moving-average positions for key support/resistance (reference the market report — e.g., 50-day SMA, Bollinger mid-band, prior swing low, dense volume area);\n"
+        "  (b) Specific volume-improvement thresholds (e.g., 'volume must reach 1.3x the 20-day average');\n"
+        "  (c) Specific earnings-verification metrics (e.g., 'gross margin must stay above X%', 'order growth must exceed Y%', 'ROE must be above Z%');\n"
+        "  (d) Specific catalyst-confirmation conditions (e.g., 'need to see quarterly order growth improve by 5pp QoQ' or 'need to see industry policy enacted')."
+    )
 
 
 def create_portfolio_manager(llm, memory=None):
@@ -52,6 +72,8 @@ def create_portfolio_manager(llm, memory=None):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
         sentiment_report = state["sentiment_report"]
+        research_report = state["research_report"]
+        stock_report = state["stock_report"]
         research_plan = state["investment_plan"]
         trader_plan = state["trader_investment_plan"]
         aggressive_snapshot_display = risk_debate_state.get("aggressive_snapshot", "")
@@ -124,6 +146,12 @@ Use this exact output order with Markdown headings:
 
 **{localize_label("Neutral Analyst comprehensive position report (synthesized from all rounds)", f"{localize_role_name('Neutral Analyst')} 综合立场报告（基于全轮次辩论）")}:**
 {neutral_report}
+
+{localize_label("Industry research cross-analysis:", "行业研报交叉分析:")}
+{research_report}
+
+{localize_label("Individual stock research cross-analysis:", "个股研报交叉分析:")}
+{stock_report}
 
 Be decisive and ground every conclusion in specific evidence from the analysts. {get_localized_final_proposal_instruction()}
 Only after the three sections above and the final transaction proposal line, append a feedback block in this exact format:

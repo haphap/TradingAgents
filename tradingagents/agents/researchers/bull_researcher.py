@@ -35,6 +35,8 @@ def create_bull_researcher(llm, memory=None):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        research_report = state["research_report"]
+        stock_report = state["stock_report"]
 
         prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 
@@ -50,6 +52,8 @@ Market research report: {market_research_report}
 Social media sentiment report: {sentiment_report}
 Latest world affairs news: {news_report}
 Company fundamentals report: {fundamentals_report}
+Industry research cross-analysis: {research_report}
+Individual stock research cross-analysis: {stock_report}
 Rolling debate brief: {debate_brief}
 Your PREVIOUS round snapshot (do NOT repeat its content in new snapshot): {bull_snapshot}
 Latest bear feedback snapshot: {bear_snapshot}

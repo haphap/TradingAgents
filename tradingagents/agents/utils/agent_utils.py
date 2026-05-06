@@ -25,6 +25,7 @@ from tradingagents.agents.utils.news_data_tools import (
     get_insider_transactions,
     get_global_news,
 )
+from tradingagents.agents.utils.research_report_tools import get_broker_research, get_stock_research
 
 
 def get_language_instruction() -> str:
@@ -191,6 +192,9 @@ ROLE_LOCALIZATION_MAP: dict[str, str] = {
     "Social Analyst": "社交情绪分析师",
     "News Analyst": "新闻分析师",
     "Fundamentals Analyst": "基本面分析师",
+    "Industry Research Analyst": "行业研究分析师",
+    "Broker Research Analyst": "行业研究分析师",
+    "Stock Research Analyst": "个股研报分析师",
     "Portfolio Manager": "投资组合经理",
     "Research Manager": "研究经理",
     "Trader": "交易员",
@@ -206,6 +210,13 @@ ROLE_VARIANT_NAMES: dict[str, set[str]] = {
     "Aggressive Analyst": {"Aggressive Analyst", "激进分析师", "激进风险分析师"},
     "Conservative Analyst": {"Conservative Analyst", "保守分析师", "保守风险分析师"},
     "Neutral Analyst": {"Neutral Analyst", "中性分析师", "中性风险分析师"},
+    "Industry Research Analyst": {
+        "Industry Research Analyst",
+        "Broker Research Analyst",
+        "行业研究分析师",
+        "券商研报分析师",
+    },
+    "Stock Research Analyst": {"Stock Research Analyst", "个股研报分析师"},
     "Portfolio Manager": {"Portfolio Manager", "投资组合经理"},
     "Research Manager": {"Research Manager", "研究经理"},
     "Trader": {"Trader", "交易员"},

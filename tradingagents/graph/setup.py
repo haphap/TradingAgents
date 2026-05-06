@@ -26,8 +26,18 @@ class GraphSetup:
         self.tool_nodes = tool_nodes
         self.conditional_logic = conditional_logic
 
+    # Display names for analysts with underscores in their keys
+    _ANALYST_DISPLAY_NAMES = {
+        "broker_research": "Industry Research",
+        "stock_research": "Stock Research",
+    }
+
+    def _analyst_display_name(self, analyst_type: str) -> str:
+        """Return display name for an analyst type (handles underscores)."""
+        return self._ANALYST_DISPLAY_NAMES.get(analyst_type, analyst_type.capitalize())
+
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["market", "social", "news", "fundamentals", "broker_research", "stock_research"]
     ):
         """Set up and compile the agent workflow graph.
 
@@ -37,6 +47,8 @@ class GraphSetup:
                 - "social": Social media analyst
                 - "news": News analyst
                 - "fundamentals": Fundamentals analyst
+                - "broker_research": Industry research analyst — industry reports (A-share only)
+                - "stock_research": Stock research analyst — individual stock reports (A-share only)
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
@@ -74,6 +86,20 @@ class GraphSetup:
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
+        if "broker_research" in selected_analysts:
+            analyst_nodes["broker_research"] = create_broker_research_analyst(
+                self.quick_thinking_llm
+            )
+            delete_nodes["broker_research"] = create_msg_delete()
+            tool_nodes["broker_research"] = self.tool_nodes["broker_research"]
+
+        if "stock_research" in selected_analysts:
+            analyst_nodes["stock_research"] = create_stock_research_analyst(
+                self.quick_thinking_llm
+            )
+            delete_nodes["stock_research"] = create_msg_delete()
+            tool_nodes["stock_research"] = self.tool_nodes["stock_research"]
+
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(self.quick_thinking_llm)
         bear_researcher_node = create_bear_researcher(self.quick_thinking_llm)
@@ -91,9 +117,10 @@ class GraphSetup:
 
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
-            workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
+            display = self._analyst_display_name(analyst_type)
+            workflow.add_node(f"{display} Analyst", node)
             workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
+                f"Msg Clear {display}", delete_nodes[analyst_type]
             )
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
 
@@ -110,13 +137,14 @@ class GraphSetup:
         # Define edges
         # Start with the first analyst
         first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
+        workflow.add_edge(START, f"{self._analyst_display_name(first_analyst)} Analyst")
 
         # Connect analysts in sequence
         for i, analyst_type in enumerate(selected_analysts):
-            current_analyst = f"{analyst_type.capitalize()} Analyst"
+            display = self._analyst_display_name(analyst_type)
+            current_analyst = f"{display} Analyst"
             current_tools = f"tools_{analyst_type}"
-            current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            current_clear = f"Msg Clear {display}"
 
             # Add conditional edges for current analyst
             workflow.add_conditional_edges(
@@ -128,7 +156,7 @@ class GraphSetup:
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
+                next_analyst = f"{self._analyst_display_name(selected_analysts[i+1])} Analyst"
                 workflow.add_edge(current_clear, next_analyst)
             else:
                 workflow.add_edge(current_clear, "Bull Researcher")

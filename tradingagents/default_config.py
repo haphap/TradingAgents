@@ -44,6 +44,8 @@ DEFAULT_CONFIG = {
         "technical_indicators": "qlib,tushare,yfinance",  # Options: qlib, tushare, yfinance
         "fundamental_data": "tushare,yfinance",           # Options: tushare, yfinance
         "news_data": "opencli,brave,yfinance",            # Options: opencli, brave, yfinance
+        "broker_research": "tushare",                     # Options: tushare (A-share only)
+        "stock_research": "tushare",                      # Options: tushare (A-share only)
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {
@@ -56,5 +58,7 @@ DEFAULT_CONFIG = {
         "get_news": "opencli",
         "get_global_news": "opencli",
         "get_insider_transactions": "tushare,yfinance",
+        "get_broker_research": "tushare",
+        "get_stock_research": "tushare",
     },
 }

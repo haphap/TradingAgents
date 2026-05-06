@@ -1385,3 +1385,256 @@ def get_insider_transactions(ticker: str) -> str:
     sort_col = "AnnouncementDate" if "AnnouncementDate" in output.columns else output.columns[0]
     output = output.sort_values(sort_col, ascending=False)
     return _to_csv_with_header(output, f"Tushare insider transactions for {ts_code}")
+
+
+def get_broker_reports(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    max_reports: int = 30,
+) -> str:
+    """Retrieve broker research reports from tushare for A-share stocks.
+
+    Returns the full abstract text for each report. The abstract (abstr) field
+    from tushare contains the report's core investment thesis, target price,
+    rating, key financials, growth drivers, and risk factors — typically multiple
+    paragraphs of substantive content.
+
+    Args:
+        ticker: Stock ticker (e.g. '601899.SH', '002155.SZ')
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+        max_reports: Maximum number of reports to return (default 30)
+
+    Returns:
+        Formatted Markdown string of broker research reports with full abstracts
+
+    Raises:
+        DataVendorUnavailable: If ticker is not A-share, tushare token missing, or no data
+    """
+    pro = _get_pro_client()
+    ts_code = _normalize_ts_code(ticker)
+    market = _classify_market(ts_code)
+
+    if market != "a_share":
+        raise DataVendorUnavailable(
+            f"Tushare broker research reports support A-share tickers only, got '{ts_code}'."
+        )
+
+    # Look up the stock's industry name for industry report filtering
+    try:
+        basic = pro.stock_basic(ts_code=ts_code, fields="ts_code,industry")
+        if basic is None or basic.empty:
+            raise DataVendorUnavailable(
+                f"Cannot determine industry for '{ts_code}': stock not found."
+            )
+        industry = str(basic.iloc[0]["industry"]).strip()
+        if not industry or industry.lower() in ("nan", "none", ""):
+            raise DataVendorUnavailable(
+                f"Cannot determine industry for '{ts_code}': industry field is empty."
+            )
+    except DataVendorUnavailable:
+        raise
+    except Exception as exc:
+        raise DataVendorUnavailable(
+            f"Failed to look up industry for '{ts_code}': {exc}"
+        ) from exc
+
+    start_api = start_date.replace("-", "")
+    end_api = end_date.replace("-", "")
+
+    try:
+        data = pro.research_report(
+            ind_name=industry,
+            start_date=start_api,
+            end_date=end_api,
+            report_type="行业研报",
+            fields="trade_date,title,abstr,author,inst_csname,ts_code,ind_name,url",
+        )
+    except Exception as exc:
+        raise DataVendorUnavailable(
+            f"Failed to retrieve tushare industry research reports for '{industry}': {exc}"
+        ) from exc
+
+    if data is None or data.empty:
+        # Try a wider 120-day window to check if the industry has any recent coverage
+        from datetime import datetime, timedelta
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            wide_start = (end_dt - timedelta(days=120)).strftime("%Y%m%d")
+            wide_data = pro.research_report(
+                ind_name=industry,
+                start_date=wide_start,
+                end_date=end_api,
+                report_type="行业研报",
+                fields="trade_date,inst_csname",
+            )
+            if wide_data is not None and not wide_data.empty:
+                raise DataVendorUnavailable(
+                    f"No industry research reports found for '{industry}' (industry of {ts_code}) "
+                    f"between {start_date} and {end_date}, but {len(wide_data)} report(s) exist "
+                    f"within the past 120 days. Try widening the date range."
+                )
+        except DataVendorUnavailable:
+            raise
+        except Exception:
+            pass
+
+        raise DataVendorUnavailable(
+            f"No industry research reports found for '{industry}' (industry of {ts_code}) "
+            f"between {start_date} and {end_date}. The tushare data source may not have "
+            f"coverage for this industry in the requested time window."
+        )
+
+    data = data.sort_values("trade_date", ascending=False).head(max_reports)
+
+    lines = [
+        f"# Industry Research Reports for {industry} (industry of {ts_code})",
+        "",
+        f"Period: {start_date} to {end_date} | Total: {len(data)} reports",
+        "",
+    ]
+    for idx, (_, row) in enumerate(data.iterrows(), 1):
+        pub_date = str(row.get("trade_date", ""))
+        if len(pub_date) == 8:
+            pub_date = f"{pub_date[:4]}-{pub_date[4:6]}-{pub_date[6:]}"
+        inst = str(row.get("inst_csname", "")).strip()
+        title = str(row.get("title", "")).strip()
+        abstr = str(row.get("abstr", "")).strip()
+        author = str(row.get("author", "")).strip()
+        ind_name = str(row.get("ind_name", "")).strip()
+        url = str(row.get("url", "")).strip()
+
+        lines.append(f"## Report {idx}: {pub_date} | {inst}")
+        if title:
+            lines.append(f"**Title:** {title}")
+        if author:
+            lines.append(f"**Author:** {author}")
+        if ind_name and ind_name.lower() not in ("nan", "none", ""):
+            lines.append(f"**Industry:** {ind_name}")
+        if url and url.lower() not in ("nan", "none", ""):
+            lines.append(f"**Source:** {url}")
+        if abstr and abstr.lower() not in ("nan", "none", ""):
+            lines.append(f"\n{abstr}")
+        else:
+            lines.append("\n*Abstract not available for this report.*")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def get_stock_reports(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    max_reports: int = 30,
+) -> str:
+    """Retrieve individual stock research reports from tushare for A-share stocks.
+
+    Returns the full abstract text for each report. The abstract (abstr) field
+    from tushare contains the report's core investment thesis, target price,
+    rating, key financials, growth drivers, and risk factors — typically multiple
+    paragraphs of substantive content.
+
+    Args:
+        ticker: Stock ticker (e.g. '601899.SH', '002155.SZ')
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+        max_reports: Maximum number of reports to return (default 30)
+
+    Returns:
+        Formatted Markdown string of individual stock research reports with full abstracts
+
+    Raises:
+        DataVendorUnavailable: If ticker is not A-share, tushare token missing, or no data
+    """
+    pro = _get_pro_client()
+    ts_code = _normalize_ts_code(ticker)
+    market = _classify_market(ts_code)
+
+    if market != "a_share":
+        raise DataVendorUnavailable(
+            f"Tushare stock research reports support A-share tickers only, got '{ts_code}'."
+        )
+
+    start_api = start_date.replace("-", "")
+    end_api = end_date.replace("-", "")
+
+    try:
+        data = pro.research_report(
+            ts_code=ts_code,
+            start_date=start_api,
+            end_date=end_api,
+            report_type="个股研报",
+            fields="trade_date,title,abstr,author,inst_csname,ts_code,ind_name,url",
+        )
+    except Exception as exc:
+        raise DataVendorUnavailable(
+            f"Failed to retrieve tushare stock research reports for '{ts_code}': {exc}"
+        ) from exc
+
+    if data is None or data.empty:
+        # Try a wider 120-day window to check if the stock has any recent coverage
+        from datetime import datetime, timedelta
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            wide_start = (end_dt - timedelta(days=120)).strftime("%Y%m%d")
+            wide_data = pro.research_report(
+                ts_code=ts_code,
+                start_date=wide_start,
+                end_date=end_api,
+                report_type="个股研报",
+                fields="trade_date,inst_csname",
+            )
+            if wide_data is not None and not wide_data.empty:
+                raise DataVendorUnavailable(
+                    f"No stock research reports found for '{ts_code}' "
+                    f"between {start_date} and {end_date}, but {len(wide_data)} report(s) exist "
+                    f"within the past 120 days. Try widening the date range."
+                )
+        except DataVendorUnavailable:
+            raise
+        except Exception:
+            pass
+
+        raise DataVendorUnavailable(
+            f"No stock research reports found for '{ts_code}' "
+            f"between {start_date} and {end_date}. The tushare data source may not have "
+            f"coverage for this stock in the requested time window."
+        )
+
+    data = data.sort_values("trade_date", ascending=False).head(max_reports)
+
+    lines = [
+        f"# Individual Stock Research Reports for {ts_code}",
+        "",
+        f"Period: {start_date} to {end_date} | Total: {len(data)} reports",
+        "",
+    ]
+    for idx, (_, row) in enumerate(data.iterrows(), 1):
+        pub_date = str(row.get("trade_date", ""))
+        if len(pub_date) == 8:
+            pub_date = f"{pub_date[:4]}-{pub_date[4:6]}-{pub_date[6:]}"
+        inst = str(row.get("inst_csname", "")).strip()
+        title = str(row.get("title", "")).strip()
+        abstr = str(row.get("abstr", "")).strip()
+        author = str(row.get("author", "")).strip()
+        ind_name = str(row.get("ind_name", "")).strip()
+        url = str(row.get("url", "")).strip()
+
+        lines.append(f"## Report {idx}: {pub_date} | {inst}")
+        if title:
+            lines.append(f"**Title:** {title}")
+        if author:
+            lines.append(f"**Author:** {author}")
+        if ind_name and ind_name.lower() not in ("nan", "none", ""):
+            lines.append(f"**Industry:** {ind_name}")
+        if url and url.lower() not in ("nan", "none", ""):
+            lines.append(f"**Source:** {url}")
+        if abstr and abstr.lower() not in ("nan", "none", ""):
+            lines.append(f"\n{abstr}")
+        else:
+            lines.append("\n*Abstract not available for this report.*")
+        lines.append("")
+
+    return "\n".join(lines)

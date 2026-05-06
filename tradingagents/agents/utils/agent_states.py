@@ -80,6 +80,8 @@ class AgentState(MessagesState):
         str, "Report from the News Researcher of current world affairs"
     ]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
+    research_report: Annotated[str, "Cross-analysis of industry research reports"]
+    stock_report: Annotated[str, "Cross-analysis of individual stock research reports"]
 
     # researcher team discussion step
     investment_debate_state: Annotated[

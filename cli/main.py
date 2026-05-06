@@ -63,6 +63,8 @@ CLI_SECTION_TITLES = {
     "sentiment_report": ("Social Sentiment", "社交情绪分析"),
     "news_report": ("News Analysis", "新闻分析"),
     "fundamentals_report": ("Fundamentals Analysis", "基本面分析"),
+    "research_report": ("Industry Research", "行业研究分析"),
+    "stock_report": ("Stock Research", "个股研报分析"),
     "investment_plan": ("Research Team Decision", "研究团队结论"),
     "trader_investment_plan": ("Trading Team Plan", "交易团队计划"),
     "final_trade_decision": ("Portfolio Management Decision", "投资组合管理决策"),
@@ -207,6 +209,8 @@ class MessageBuffer:
         "social": "Social Analyst",
         "news": "News Analyst",
         "fundamentals": "Fundamentals Analyst",
+        "broker_research": "Industry Research Analyst",
+        "stock_research": "Stock Research Analyst",
     }
 
     # Report section mapping: section -> (analyst_key for filtering, finalizing_agent)
@@ -217,6 +221,8 @@ class MessageBuffer:
         "sentiment_report": ("social", "Social Analyst"),
         "news_report": ("news", "News Analyst"),
         "fundamentals_report": ("fundamentals", "Fundamentals Analyst"),
+        "research_report": ("broker_research", "Industry Research Analyst"),
+        "stock_report": ("stock_research", "Stock Research Analyst"),
         "investment_plan": (None, "Research Manager"),
         "trader_investment_plan": (None, "Trader"),
         "final_trade_decision": (None, "Portfolio Manager"),
@@ -331,7 +337,7 @@ class MessageBuffer:
         report_parts = []
 
         # Analyst Team Reports - use .get() to handle missing sections
-        analyst_sections = ["market_report", "sentiment_report", "news_report", "fundamentals_report"]
+        analyst_sections = ["market_report", "sentiment_report", "news_report", "fundamentals_report", "research_report", "stock_report"]
         if any(self.report_sections.get(section) for section in analyst_sections):
             report_parts.append(
                 f"## {_localize_cli_label('Analyst Team Reports', '分析团队报告')}"
@@ -355,6 +361,16 @@ class MessageBuffer:
                 report_parts.append(
                     f"### {_localize_cli_section_title('fundamentals_report')}\n"
                     f"{_prepare_report_markdown(self.report_sections['fundamentals_report'], 4)}"
+                )
+            if self.report_sections.get("research_report"):
+                report_parts.append(
+                    f"### {_localize_cli_section_title('research_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['research_report'], 4)}"
+                )
+            if self.report_sections.get("stock_report"):
+                report_parts.append(
+                    f"### {_localize_cli_section_title('stock_report')}\n"
+                    f"{_prepare_report_markdown(self.report_sections['stock_report'], 4)}"
                 )
 
         # Research Team Reports
@@ -622,6 +638,8 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
             "Social Analyst",
             "News Analyst",
             "Fundamentals Analyst",
+            "Industry Research Analyst",
+            "Stock Research Analyst",
         ],
         "Research Team": ["Bull Researcher", "Bear Researcher", "Research Manager"],
         "Trading Team": ["Trader"],
@@ -999,6 +1017,16 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
         fundamentals_report = _prepare_report_markdown(final_state["fundamentals_report"])
         (analysts_dir / "fundamentals.md").write_text(fundamentals_report, encoding="utf-8")
         analyst_parts.append((_localize_cli_role_title("Fundamentals Analyst"), fundamentals_report))
+    if final_state.get("research_report"):
+        analysts_dir.mkdir(exist_ok=True)
+        research_report = _prepare_report_markdown(final_state["research_report"])
+        (analysts_dir / "broker_research.md").write_text(research_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("Industry Research Analyst"), research_report))
+    if final_state.get("stock_report"):
+        analysts_dir.mkdir(exist_ok=True)
+        stock_report = _prepare_report_markdown(final_state["stock_report"])
+        (analysts_dir / "stock_research.md").write_text(stock_report, encoding="utf-8")
+        analyst_parts.append((_localize_cli_role_title("Stock Research Analyst"), stock_report))
     if analyst_parts:
         content = "\n\n".join(
             f"### {name}\n{_prepare_report_markdown(text, 4)}"
@@ -1131,6 +1159,10 @@ def display_complete_report(final_state):
         analysts.append((_localize_cli_role_title("News Analyst"), final_state["news_report"]))
     if final_state.get("fundamentals_report"):
         analysts.append((_localize_cli_role_title("Fundamentals Analyst"), final_state["fundamentals_report"]))
+    if final_state.get("research_report"):
+        analysts.append((_localize_cli_role_title("Industry Research Analyst"), final_state["research_report"]))
+    if final_state.get("stock_report"):
+        analysts.append((_localize_cli_role_title("Stock Research Analyst"), final_state["stock_report"]))
     if analysts:
         console.print(
             Panel(
@@ -1230,18 +1262,22 @@ def update_research_team_status(status):
 
 
 # Ordered list of analysts for status transitions
-ANALYST_ORDER = ["market", "social", "news", "fundamentals"]
+ANALYST_ORDER = ["market", "social", "news", "fundamentals", "broker_research", "stock_research"]
 ANALYST_AGENT_NAMES = {
     "market": "Market Analyst",
     "social": "Social Analyst",
     "news": "News Analyst",
     "fundamentals": "Fundamentals Analyst",
+    "broker_research": "Industry Research Analyst",
+    "stock_research": "Stock Research Analyst",
 }
 ANALYST_REPORT_MAP = {
     "market": "market_report",
     "social": "sentiment_report",
     "news": "news_report",
     "fundamentals": "fundamentals_report",
+    "broker_research": "research_report",
+    "stock_research": "stock_report",
 }
 
 
@@ -1468,6 +1504,23 @@ def run_analysis(checkpoint: bool = False):
     # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
     selected_set = {analyst.value for analyst in selections["analysts"]}
     selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
+    selected_analyst_keys, skipped_analyst_keys = TradingAgentsGraph.resolve_selected_analysts(
+        selected_analyst_keys,
+        selections["ticker"],
+    )
+    selected_analyst_labels = [ANALYST_AGENT_NAMES.get(a, a) for a in selected_analyst_keys]
+    skipped_analyst_labels = [ANALYST_AGENT_NAMES.get(a, a) for a in skipped_analyst_keys]
+    if not selected_analyst_keys:
+        console.print(
+            "\n[red]All selected analysts are incompatible with this ticker. "
+            "Industry Research Analyst and Stock Research Analyst are available for A-share tickers only.[/red]"
+        )
+        raise typer.Exit(code=1)
+    if skipped_analyst_labels:
+        console.print(
+            "\n[yellow]Skipping A-share-only analysts for this ticker:[/yellow] "
+            + ", ".join(skipped_analyst_labels)
+        )
 
     # Initialize the graph with callbacks bound to LLMs
     graph = TradingAgentsGraph(
@@ -1553,8 +1606,13 @@ def run_analysis(checkpoint: bool = False):
         )
         message_buffer.add_message(
             "System",
-            f"Selected analysts: {', '.join(analyst.value for analyst in selections['analysts'])}",
+            f"Selected analysts: {', '.join(selected_analyst_labels)}",
         )
+        if skipped_analyst_labels:
+            message_buffer.add_message(
+                "System",
+                f"Skipped A-share-only analysts for this ticker: {', '.join(skipped_analyst_labels)}",
+            )
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
         # Update agent status to in_progress for the first analyst

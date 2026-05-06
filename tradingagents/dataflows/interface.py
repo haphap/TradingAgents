@@ -19,6 +19,10 @@ from .tushare import (
     get_cashflow as get_tushare_cashflow,
     get_income_statement as get_tushare_income_statement,
     get_insider_transactions as get_tushare_insider_transactions,
+    get_broker_reports as get_tushare_broker_reports,
+    get_stock_reports as get_tushare_stock_reports,
+    _classify_market as classify_tushare_market,
+    _normalize_ts_code as normalize_tushare_ticker,
 )
 from .qlib_local import (
     get_stock as get_qlib_stock,
@@ -58,6 +62,18 @@ TOOLS_CATEGORIES = {
             "get_news",
             "get_global_news",
             "get_insider_transactions",
+        ]
+    },
+    "broker_research": {
+        "description": "Industry research reports",
+        "tools": [
+            "get_broker_research",
+        ]
+    },
+    "stock_research": {
+        "description": "Individual stock research reports",
+        "tools": [
+            "get_stock_research",
         ]
     }
 }
@@ -116,6 +132,14 @@ VENDOR_METHODS = {
         "tushare": get_tushare_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
     },
+    # broker_research
+    "get_broker_research": {
+        "tushare": get_tushare_broker_reports,
+    },
+    # stock_research
+    "get_stock_research": {
+        "tushare": get_tushare_stock_reports,
+    },
 }
 
 def get_category_for_method(method: str) -> str:
@@ -147,6 +171,17 @@ def _is_chinese_ticker(ticker: str) -> bool:
     if isinstance(ticker, str) and "." in ticker:
         return ticker.rsplit(".", 1)[-1].upper() in _CHINESE_SUFFIXES
     return False
+
+
+def is_a_share_ticker(ticker: str) -> bool:
+    """Return True when *ticker* maps to an A-share market symbol."""
+    if not isinstance(ticker, str) or not ticker.strip():
+        return False
+
+    try:
+        return classify_tushare_market(normalize_tushare_ticker(ticker)) == "a_share"
+    except DataVendorUnavailable:
+        return False
 
 
 def route_to_vendor(method: str, *args, **kwargs):

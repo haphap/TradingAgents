@@ -26,7 +26,10 @@ def _is_chinese_output() -> bool:
 
 def _research_action_logic_instruction() -> str:
     if _is_chinese_output():
-        return "- 说明估值、催化节奏、下行边界，以及确认 / 证伪信号如何共同导向你的结论。"
+        return (
+            "- 说明估值、催化节奏、下行边界，以及确认 / 证伪信号如何共同导向你的决策。"
+            " 每个触发条件必须给出具体数值或可验证标准，不能只写“等待确认”“观察变化”这类泛化表述。"
+        )
     return "- Explain how valuation, catalyst timing, downside boundary, and confirmation / invalidation signals lead to your decision."
 
 
@@ -34,10 +37,24 @@ def _research_detail_instruction(section: str) -> str:
     if _is_chinese_output():
         if section == "conclusion":
             return "- 这一部分必须写成连贯分析段落，至少 4 句，不能只写简短观点或要点摘录。"
-        return "- 这一部分必须写成详细推理段落，至少 4 句，要把估值、催化节奏、价格信号和风险触发条件串成完整逻辑链。"
+        return (
+            "- 这一部分必须写成详细推理段落，至少 4 句，要把估值、催化节奏、价格信号和风险触发条件串成完整逻辑链。"
+            " 对于持仓建议，必须给出以下具体标准：\n"
+            "  (a) 关键支撑和阻力位的具体价格或均线位置（引用市场报告中的技术指标）；\n"
+            "  (b) 成交量改善的具体阈值（如“成交量需达到近20日均量的1.3倍以上”）；\n"
+            "  (c) 盈利验证的具体指标（如毛利率、订单增速、ROE的具体阈值）；\n"
+            "  (d) 催化确认的具体条件（如“需看到季度订单增速环比提升5个百分点以上”）。"
+        )
     if section == "conclusion":
         return "- Write this section as a coherent analysis paragraph with at least 4 full sentences; do not output terse fragments or simple bullet-style restatements."
-    return "- Write this section as a detailed reasoning paragraph with at least 4 full sentences, explicitly connecting valuation, catalysts, price action, and risk triggers to the recommendation."
+    return (
+        "- Write this section as a detailed reasoning paragraph with at least 4 full sentences, explicitly connecting valuation, catalysts, price action, and risk triggers to the recommendation."
+        " For positioning recommendations, you MUST provide these specific criteria:\n"
+        "  (a) Specific price levels or moving-average positions for key support/resistance (reference the market report);\n"
+        "  (b) Specific volume-improvement thresholds (e.g., 'volume must reach 1.3x the 20-day average');\n"
+        "  (c) Specific earnings-verification metrics (e.g., specific thresholds for gross margin, order growth, ROE);\n"
+        "  (d) Specific catalyst-confirmation conditions (e.g., 'need to see quarterly order growth improve by 5pp QoQ')."
+    )
 
 
 def create_research_manager(llm, memory=None):
@@ -49,6 +66,8 @@ def create_research_manager(llm, memory=None):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        research_report = state["research_report"]
+        stock_report = state["stock_report"]
 
         investment_debate_state = state["investment_debate_state"]
         bull_snapshot_display = investment_debate_state.get("bull_snapshot", "")
@@ -104,6 +123,12 @@ Only after the three sections above, append a feedback block in this exact forma
 
 {localize_label("Bear Analyst comprehensive position report (synthesized from all rounds):", f"{localize_role_name('Bear Analyst')} 综合立场报告（基于全轮次辩论）:")}
 {bear_report}
+
+{localize_label("Industry research cross-analysis:", "行业研报交叉分析:")}
+{research_report}
+
+{localize_label("Individual stock research cross-analysis:", "个股研报交叉分析:")}
+{stock_report}
 """
         normalized_content = normalize_chinese_manager_terms(
             invoke_structured_or_freetext(

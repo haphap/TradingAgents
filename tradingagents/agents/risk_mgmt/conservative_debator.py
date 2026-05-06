@@ -39,6 +39,8 @@ def create_conservative_debator(llm):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        research_report = state["research_report"]
+        stock_report = state["stock_report"]
 
         trader_decision = state["trader_investment_plan"]
 
@@ -52,6 +54,8 @@ Market Research Report: {market_research_report}
 Social Media Sentiment Report: {sentiment_report}
 Latest World Affairs Report: {news_report}
 Company Fundamentals Report: {fundamentals_report}
+Industry research cross-analysis: {research_report}
+Individual stock research cross-analysis: {stock_report}
 Rolling risk debate brief: {debate_brief}
 Your PREVIOUS round snapshot (do NOT repeat its content in new snapshot): {conservative_snapshot}
 Latest aggressive feedback snapshot: {aggressive_snapshot}

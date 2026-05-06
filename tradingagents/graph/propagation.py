@@ -70,6 +70,8 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            "research_report": "",
+            "stock_report": "",
             "investment_plan": "",
             "trader_investment_plan": "",
             "final_trade_decision": "",
